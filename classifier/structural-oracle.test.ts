@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   parseHunks,
@@ -355,9 +355,22 @@ describe('runStructuralOracle — verdict logic', () => {
 // ---------------------------------------------------------------------------
 // Integration: 3 known error cases (oracle must produce likely_rediscovery)
 // ---------------------------------------------------------------------------
+//
+// These tests replay real recorded findings through the oracle. They need a
+// findings directory (one subdirectory per run, each with audit.config.json +
+// findings.jsonl) and the cloned target repos each run's patch commit came
+// from (for `git show`). Point ORACLE_FINDINGS_DIR at that directory to run
+// them; they skip cleanly if it's unset or doesn't exist.
 
-const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FINDINGS_DIR = join(REPO_ROOT, 'packages', 'auditor', 'findings');
+const FINDINGS_DIR = process.env.ORACLE_FINDINGS_DIR ?? '';
+const HAS_FINDINGS_DIR = FINDINGS_DIR !== '' && existsSync(FINDINGS_DIR);
+
+if (!HAS_FINDINGS_DIR) {
+  console.warn(
+    '[structural-oracle.test.ts] Skipping integration tests: set ORACLE_FINDINGS_DIR ' +
+    'to a findings directory (with the cloned target repos available for `git show`) to run them.',
+  );
+}
 
 function loadFindingsJsonl(runId: string): Array<{ id: string; citations: Array<{ file: string; line: number }>; bypass_variant_type?: string }> {
   const path = join(FINDINGS_DIR, runId, 'findings.jsonl');
@@ -387,7 +400,7 @@ function fetchPatch(patchCommit: string, repoPath: string): PatchInput {
   return { files, diffText };
 }
 
-describe('integration: 3 known error cases → likely_rediscovery', () => {
+describe.skipIf(!HAS_FINDINGS_DIR)('integration: 3 known error cases → likely_rediscovery', () => {
   it('nitro-patch-diff-001-finding-1: bypass→rediscovery (else-if guard reachability claim)', () => {
     const runId = 'run-2026-05-28-nitro-patch-diff-001';
     const findings = loadFindingsJsonl(runId);
@@ -426,7 +439,7 @@ describe('integration: 3 known error cases → likely_rediscovery', () => {
 // Integration: confirmed bypasses (oracle must NOT produce likely_rediscovery)
 // ---------------------------------------------------------------------------
 
-describe('integration: confirmed bypasses → likely_bypass or inconclusive', () => {
+describe.skipIf(!HAS_FINDINGS_DIR)('integration: confirmed bypasses → likely_bypass or inconclusive', () => {
   it('b-run-001-finding-1: futimes in promises.js → likely_bypass', () => {
     const runId = 'run-2026-05-29-nodejs-b-run-001';
     const findings = loadFindingsJsonl(runId);
