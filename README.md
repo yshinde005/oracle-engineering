@@ -71,12 +71,13 @@ npx tsx run-oracle-evaluation.ts --findings-dir <path-to-findings-dir> [--repo-r
 > not oracle-engineering research artifacts. `run-oracle-evaluation.ts`
 > takes the findings directory as a `--findings-dir` CLI argument (with
 > an optional `--repo-root` to relocate the target repo clones);
-> `structural-oracle.test.ts`'s integration block still has the old
-> monorepo-relative path baked in and **will fail with ENOENT if run
-> here without that data present** — it was copied unchanged from the
-> Loci auditor repo, since only the evaluation script was in scope for
-> refactoring. Its unit tests (the `parseHunks` and `runStructuralOracle`
-> describe blocks) don't touch the filesystem and will pass on their own.
+> `structural-oracle.test.ts`'s integration suite reads the
+> `ORACLE_FINDINGS_DIR` environment variable and **skips cleanly with a
+> warning when it's unset or not found**, rather than failing with
+> ENOENT. Set `ORACLE_FINDINGS_DIR` to a findings directory (with the
+> cloned target repos available for `git show`) to run those tests for
+> real. Its unit tests (the `parseHunks` and `runStructuralOracle`
+> describe blocks) don't touch the filesystem and always run.
 
 ### `smoke-test/`
 
