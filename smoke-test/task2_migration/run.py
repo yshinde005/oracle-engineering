@@ -10,6 +10,9 @@ Usage:
   python -m task2_migration.run --run a   # prose only
   python -m task2_migration.run --run b   # structured only
   python -m task2_migration.run --regen   # force regeneration
+  python -m task2_migration.run --run a --gt human
+      # score Run A against the independent human labels in human_labels.json,
+      # with Check D excluded from the oracle
 """
 import argparse
 import json
@@ -33,20 +36,46 @@ RESULTS_DIR = Path(__file__).parent.parent / "results"
 CACHE_A = RESULTS_DIR / "task2_prose_generated.json"
 CACHE_B = RESULTS_DIR / "task2_structured_generated.json"
 RESULTS_A = RESULTS_DIR / "task2_run_a.json"
+RESULTS_A_HUMAN = RESULTS_DIR / "task2_run_a_human.json"
 RESULTS_B = RESULTS_DIR / "task2_run_b.json"
+HUMAN_LABELS = Path(__file__).parent / "human_labels.json"
 COMPARISON = RESULTS_DIR / "task2_comparison.json"
 
 
 def ensure_db():
-    if not DB_PATH.exists():
-        print("  Database not found; creating...")
-        conn = create_and_seed(DB_PATH)
-        conn.close()
+    """(Re)build a pristine seeded database.
+
+    Check D copies this file for every sample, so it must not carry schema
+    changes from earlier runs (older versions of Check D leaked DDL into it).
+    """
+    conn = create_and_seed(DB_PATH)
+    conn.close()
 
 
-def _run_a(scenarios: list[dict], force_regen: bool) -> list[SampleResult]:
-    """Prose mode run."""
+def load_human_labels() -> dict[str, bool]:
+    """Load human_labels.json as {sample_id: is_valid}."""
+    data = json.loads(HUMAN_LABELS.read_text())
+    out = {}
+    for sample_id, label in data["labels"].items():
+        if label not in ("VALID", "INVALID"):
+            raise ValueError(f"{HUMAN_LABELS}: bad label {label!r} for {sample_id}")
+        out[sample_id] = label == "VALID"
+    return out
+
+
+def _run_a(scenarios: list[dict], force_regen: bool, gt: str = "oracle") -> list[SampleResult]:
+    """Prose mode run.
+
+    gt="oracle": legacy scoring. Clean samples' ground truth = the oracle's own
+                 verdict (all four checks); seeded samples = invalid.
+    gt="human":  ground truth for every sample comes from human_labels.json,
+                 and the oracle runs Checks A/B/C only (Check D excluded).
+    """
     print("\n── Run A: Prose Plans ──────────────────────────────────────────")
+    human = load_human_labels() if gt == "human" else None
+    skip_checks = ("D",) if gt == "human" else ()
+    if human is not None:
+        print(f"  Ground truth: human labels ({HUMAN_LABELS.name}); oracle checks A/B/C only.")
     cache = json.loads(CACHE_A.read_text()) if CACHE_A.exists() and not force_regen else {}
 
     if not cache or force_regen:
@@ -128,15 +157,23 @@ def _run_a(scenarios: list[dict], force_regen: bool) -> list[SampleResult]:
             sc = sc_by_id[err["scenario_id"]] if err else None
         if sc is None:
             continue
-        verdict, details = evaluate_prose(s.output, sc, DB_PATH)
+        verdict, details = evaluate_prose(s.output, sc, DB_PATH, skip_checks=skip_checks)
         s.oracle_verdict = verdict
         s.oracle_details = details
         print(f"  {s.id}: oracle={'✓' if verdict else '✗'}  {details['reason'][:60]}")
 
-    # Update ground truth for clean samples using oracle verdict
-    for s in samples:
-        if not s.is_seeded_error:
-            s.ground_truth = s.oracle_verdict
+    if human is not None:
+        missing = [s.id for s in samples if s.id not in human]
+        if missing:
+            raise KeyError(f"No human label for sample(s): {missing}")
+        for s in samples:
+            s.ground_truth = human[s.id]
+    else:
+        # Legacy: ground truth for clean samples is the oracle's own verdict.
+        # This makes oracle accuracy on clean samples 100% by construction.
+        for s in samples:
+            if not s.is_seeded_error:
+                s.ground_truth = s.oracle_verdict
 
     return samples
 
@@ -274,24 +311,32 @@ def compare_runs(samples_a: list[SampleResult], samples_b: list[SampleResult]) -
     }
 
 
-def run(runs: str = "ab", force_regen: bool = False):
+def run(runs: str = "ab", force_regen: bool = False, gt: str = "oracle"):
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     print("Task 2 — Database Migration Plans")
     ensure_db()
 
     samples_a = samples_b = None
 
+    if gt == "human" and "b" in runs:
+        print("  Note: human labels exist for Run A only; Run B still uses oracle-derived")
+        print("  ground truth with all four checks, and the A-vs-B comparison is skipped.")
+
     if "a" in runs:
-        samples_a = _run_a(SCENARIOS, force_regen)
-        print_report("Task 2 Run A (Prose)", samples_a)
-        save_results(RESULTS_A, "task2_prose", samples_a, 0.0)
+        samples_a = _run_a(SCENARIOS, force_regen, gt=gt)
+        if gt == "human":
+            print_report("Task 2 Run A (Prose) — human labels, Checks A/B/C", samples_a)
+            save_results(RESULTS_A_HUMAN, "task2_prose_human_gt", samples_a, 0.0)
+        else:
+            print_report("Task 2 Run A (Prose)", samples_a)
+            save_results(RESULTS_A, "task2_prose", samples_a, 0.0)
 
     if "b" in runs:
         samples_b = _run_b(SCENARIOS, force_regen)
         print_report("Task 2 Run B (Structured)", samples_b)
         save_results(RESULTS_B, "task2_structured", samples_b, 0.0)
 
-    if samples_a and samples_b:
+    if samples_a and samples_b and gt == "oracle":
         comparison = compare_runs(samples_a, samples_b)
         COMPARISON.write_text(json.dumps(comparison, indent=2))
         print("\n── Run A vs Run B Comparison (Core Result) ─────────────────────")
@@ -303,5 +348,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", default="ab", choices=["a", "b", "ab"])
     parser.add_argument("--regen", action="store_true")
+    parser.add_argument("--gt", default="oracle", choices=["oracle", "human"],
+                        help="Run A ground truth: oracle-derived (legacy) or human_labels.json")
     args = parser.parse_args()
-    run(runs=args.run, force_regen=args.regen)
+    run(runs=args.run, force_regen=args.regen, gt=args.gt)

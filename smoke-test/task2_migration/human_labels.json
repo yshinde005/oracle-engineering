@@ -1,0 +1,27 @@
+{
+  "_description": "Independent human labels for Task 2 Run A (prose plans). VALID = the plan is a correct migration plan; INVALID = it contains a real error. A-me08 and A-me09 are seeded data_loss errors whose injection silently failed, so the plan is unchanged and VALID. Used by `python -m task2_migration.run --run a --gt human`.",
+  "run": "A",
+  "labels": {
+    "A-s01": "VALID",
+    "A-s02": "VALID",
+    "A-s03": "VALID",
+    "A-s04": "VALID",
+    "A-s05": "VALID",
+    "A-s06": "VALID",
+    "A-s07": "VALID",
+    "A-s08": "VALID",
+    "A-s09": "VALID",
+    "A-s10": "VALID",
+    "A-s11": "VALID",
+    "A-s12": "VALID",
+    "A-me01": "INVALID",
+    "A-me02": "INVALID",
+    "A-me05": "INVALID",
+    "A-me06": "INVALID",
+    "A-me07": "INVALID",
+    "A-me08": "VALID",
+    "A-me09": "VALID",
+    "A-me10": "INVALID",
+    "A-me11": "INVALID"
+  }
+}

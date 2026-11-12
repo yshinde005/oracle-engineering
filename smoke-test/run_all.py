@@ -32,10 +32,10 @@ def run_task1(regen: bool):
     return run(force_regen=regen)
 
 
-def run_task2(regen: bool, run_mode: str):
+def run_task2(regen: bool, run_mode: str, gt: str):
     print_banner("Task 2 — Migration Plans (Deceptive No)")
     from task2_migration.run import run
-    return run(runs=run_mode, force_regen=regen)
+    return run(runs=run_mode, force_regen=regen, gt=gt)
 
 
 def run_task3(regen: bool):
@@ -116,6 +116,9 @@ def main():
     parser.add_argument("--regen", action="store_true", help="Force regeneration (ignore cache)")
     parser.add_argument("--run", default="ab", choices=["a", "b", "ab"],
                         help="Task 2 run mode (a=prose, b=structured, ab=both)")
+    parser.add_argument("--gt", default="oracle", choices=["oracle", "human"],
+                        help="Task 2 Run A ground truth: oracle-derived (legacy) or "
+                             "task2_migration/human_labels.json (oracle runs Checks A/B/C only)")
     args = parser.parse_args()
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -129,7 +132,7 @@ def main():
         run_task1(args.regen)
 
     if "2" in args.tasks:
-        run_task2(args.regen, args.run)
+        run_task2(args.regen, args.run, args.gt)
 
     if "3" in args.tasks:
         run_task3(args.regen)

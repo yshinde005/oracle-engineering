@@ -74,7 +74,10 @@ const HUMAN_GT: Record<string, 'rediscovery' | 'bypass' | 'excluded' | 'unknown'
   // Human judgment: unknown without detailed line-by-line comparison.
   'run-2026-05-28-nodejs-oq8-v1-002-finding-1': 'unknown',
   'run-2026-05-28-nodejs-oq8-v1-002-finding-2': 'unknown',
-  'run-2026-05-28-nodejs-oq8-v1-002-finding-5': 'unknown',
+  // Human-labeled bypass. Its citation falls on an unmodified context line of a
+  // --unified=5 hunk, so the oracle (which uses full hunk ranges) reports a
+  // false rediscovery here — the oracle's one known error on this corpus.
+  'run-2026-05-28-nodejs-oq8-v1-002-finding-5': 'bypass',
 
   // OQ8 v1-003: lib/fs.js lines in ftruncate and lchown area — distinct functions
   // from what the oq8 patch modified (fchmod/fchown). Genuine bypasses.
@@ -281,8 +284,12 @@ function main() {
   const definedGt = rows.filter((r) => r.humanGt !== 'unknown');
   const detectionLift = definedGt.filter((r) => r.mirrorCorrect === false && r.oracleCorrect === true);
   const bothCorrect = definedGt.filter((r) => r.mirrorCorrect === true && r.oracleCorrect === true);
-  const mirrorOnlyCorrect = definedGt.filter((r) => r.mirrorCorrect === true && r.oracleCorrect === false);
+  const mirrorRightOracleWrong = definedGt.filter((r) => r.mirrorCorrect === true && r.oracleCorrect === false);
+  const mirrorRightOracleAbstain = definedGt.filter((r) => r.mirrorCorrect === true && r.oracleCorrect === null);
+  const mirrorWrongOracleAbstain = definedGt.filter((r) => r.mirrorCorrect === false && r.oracleCorrect === null);
   const bothWrong = definedGt.filter((r) => r.mirrorCorrect === false && r.oracleCorrect === false);
+  const mirrorErrors = definedGt.filter((r) => r.mirrorCorrect === false).length;
+  const oracleErrors = definedGt.filter((r) => r.oracleCorrect === false).length;
   const oracleInconclusive = rows.filter((r) => r.oracle === 'inconclusive');
   const unknownGt = rows.filter((r) => r.humanGt === 'unknown');
 
@@ -293,10 +300,12 @@ function main() {
   console.log(`  Oracle inconclusive (blind spot):         ${oracleInconclusive.length}`);
   console.log('');
   console.log('Failure correlation matrix (defined GT only):');
-  console.log(`  Both correct:             ${bothCorrect.length}`);
-  console.log(`  Mirror ✓, oracle abstain: ${mirrorOnlyCorrect.length}`);
+  console.log(`  Both correct:                        ${bothCorrect.length}`);
+  console.log(`  Mirror ✓, oracle ✗ (ORACLE ERROR):   ${mirrorRightOracleWrong.length}`);
+  console.log(`  Mirror ✓, oracle abstain:            ${mirrorRightOracleAbstain.length}`);
   console.log(`  Mirror ✗, oracle ✓ (DETECTION LIFT): ${detectionLift.length}`);
-  console.log(`  Both wrong (CORR. FAIL):  ${bothWrong.length}`);
+  console.log(`  Mirror ✗, oracle abstain:            ${mirrorWrongOracleAbstain.length}`);
+  console.log(`  Both wrong (CORR. FAIL):             ${bothWrong.length}`);
 
   if (detectionLift.length > 0) {
     console.log('\n─── Detection lift cases ──────────────────────────────────────────────────\n');
@@ -326,15 +335,22 @@ function main() {
   // Outcome classification
   // ---------------------------------------------------------------------------
   console.log('\n─── Outcome classification ────────────────────────────────────────────────\n');
-  if (detectionLift.length >= 1 && bothWrong.length === 0 && mirrorOnlyCorrect.length === 0) {
-    console.log('  Outcome A: oracle catches error cases, no false flags, zero correlated failures.');
-    console.log('  The structural oracle is genuinely independent of the mirror on this corpus.');
-  } else if (detectionLift.length >= 1 && bothWrong.length === 0) {
-    console.log('  Outcome C: oracle catches some error cases, oracle abstains on others (blind spot).');
-    console.log('  Partial detection with zero correlated failures — decorrelation confirmed.');
-  } else if (detectionLift.length === 0) {
-    console.log('  Outcome B or D: oracle adds no lift. Either same errors as mirror (B) or all');
-    console.log('  inconclusive (D). Review the blind spot findings for oracle redesign.');
+  console.log(`  Detection lift: ${detectionLift.length}   Mirror errors: ${mirrorErrors}   Oracle errors: ${oracleErrors}`);
+  console.log('');
+  // Failure correlation is only measurable when both checkers err at least once:
+  // if either never errs, "zero correlated failures" holds trivially.
+  if (mirrorErrors >= 1 && oracleErrors >= 1) {
+    if (bothWrong.length === 0) {
+      console.log('  No case where both checkers are wrong: their failures are complementary on');
+      console.log('  this corpus. With this few errors, that is an observation, not a measured');
+      console.log('  independence.');
+    } else {
+      console.log(`  ${bothWrong.length} correlated failure(s): both checkers wrong on the same finding(s).`);
+    }
+  } else {
+    console.log('  Failure correlation is UNDEFINED on this corpus: it needs at least one error');
+    console.log(`  from each checker (mirror: ${mirrorErrors}, oracle: ${oracleErrors}).`);
+    console.log('  "0 correlated failures" here is trivially true and says nothing about independence.');
   }
 
   console.log('\n══════════════════════════════════════════════════════════════════════════════\n');

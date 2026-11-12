@@ -1,0 +1,1339 @@
+{
+  "task": "task2_structured",
+  "total_cost_usd": 0.0,
+  "evaluation": {
+    "total_evaluated": 21,
+    "seeded_errors": 10,
+    "clean_samples": 11,
+    "agreement_correct": 11,
+    "detection_lift": 10,
+    "oracle_only_error": 0,
+    "correlated_failure": 0,
+    "mirror_accuracy": 0.5238095238095238,
+    "oracle_accuracy": 1.0,
+    "mirror_error_rate_on_seeded": 0.0,
+    "oracle_error_rate_on_seeded": 0.0,
+    "detection_lift_rate": 1.0,
+    "correlated_failure_rate": 0.0
+  },
+  "extra": {},
+  "samples": [
+    {
+      "id": "B-s01",
+      "question": "Add nullable email column to employees",
+      "output": "{\"scenario_id\": \"s01\", \"title\": \"Add nullable email column to employees\", \"affected_tables\": [\"employees\"], \"affected_columns\": {\"employees\": [\"email\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Add nullable email column to employees table. Existing rows will automatically receive NULL for this column.\", \"sql\": \"ALTER TABLE employees ADD COLUMN email TEXT NULL;\", \"depends_on\": [], \"affects_table\": \"employees\", \"operation\": \"ADD_COLUMN\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Remove the email column by recreating the employees table without it, copying all existing data, dropping the old table, and renaming the new one.\", \"sql\": \"CREATE TABLE employees_backup (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, hire_date TEXT); INSERT INTO employees_backup SELECT id, name, dept_id, salary, hire_date FROM employees; DROP TABLE employees; ALTER TABLE employees_backup RENAME TO employees;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT COUNT(*) AS total_rows, SUM(CASE WHEN email IS NULL THEN 1 ELSE 0 END) AS null_email_rows FROM employees; SELECT name FROM pragma_table_info('employees') WHERE name = 'email';\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The forward step correctly uses SQLite's ALTER TABLE ADD COLUMN with NULL, which automatically assigns NULL to existing rows and requires no table lock, satisfying zero-downtime. The rollback recreates the employees table without the email column, preserving all other data via INSERT INTO ... SELECT, and the validation SQL confirms both row counts and column existenc",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "1/1",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 3,
+            "errors": [
+              {
+                "sql": "CREATE TABLE employees_backup (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departm",
+                "error": "You can only execute one statement at a time."
+              },
+              {
+                "sql": "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN email IS NULL THEN 1 ELSE 0 END) AS null_email_rows FRO",
+                "error": "You can only execute one statement at a time."
+              }
+            ],
+            "reason": "2 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 3,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-s02",
+      "question": "Add budget_used column to departments with a default of 0",
+      "output": "{\"scenario_id\": \"s02\", \"title\": \"Add budget_used column to departments with a default of 0\", \"affected_tables\": [\"departments\"], \"affected_columns\": {\"departments\": [\"budget_used\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Add budget_used column to departments table with a default of 0. SQLite will set existing rows to 0 via the default, satisfying the NOT NULL constraint.\", \"sql\": \"ALTER TABLE departments ADD COLUMN budget_used REAL NOT NULL DEFAULT 0;\", \"depends_on\": [], \"affects_table\": \"departments\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 2, \"description\": \"Backfill any existing rows where budget_used might be NULL to ensure all rows have budget_used = 0. This is a safety step in case the SQLite version did not apply the default to existing rows.\", \"sql\": \"UPDATE departments SET budget_used = 0 WHERE budget_used IS NULL;\", \"depends_on\": [1], \"affects_table\": \"departments\", \"operation\": \"UPDATE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Recreate the departments table without the budget_used column, copying all original data back, then drop the modified table and rename. Also re-establish any indexes or foreign key relationships.\", \"sql\": \"CREATE TABLE departments_backup AS SELECT id, name, budget FROM departments; DROP TABLE departments; ALTER TABLE departments_backup RENAME TO departments;\", \"reverses_forward_step\": 1}, {\"step\": 2, \"description\": \"No data reversal needed for the backfill UPDATE since the column itself is dropped in rollback step 1. This is a no-op placeholder confirming the UPDATE is fully reversed by the column removal.\", \"sql\": \"\", \"reverses_forward_step\": 2}], \"validation_sql\": \"SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS: all rows have budget_used = 0' ELSE 'FAIL: some rows have budget_used != 0 or NULL' END AS result FROM departments WHERE budget_used IS NULL OR budget_used != 0; SELECT COUNT(*) AS total_rows, SUM(CASE WHEN budget_used = 0 THEN 1 ELSE 0 END) AS rows_with_zero FROM departments;\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The forward steps correctly add the budget_used column with NOT NULL DEFAULT 0 (SQLite supports this) and include a safety backfill UPDATE for older SQLite versions that may not apply defaults to existing rows. The rollback reconstructs the departments table without budget_used using a backup/rename pattern appropriate for SQLite's limited ALTER TABLE support, and all existing data (id, name, budget) is preserved. All affected tables and columns are identified, dependency ordering is valid, and a rollback is provided for every destructive step",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "2/2",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 4,
+            "errors": [
+              {
+                "sql": "ALTER TABLE departments ADD COLUMN budget_used REAL NOT NULL DEFAULT 0;",
+                "error": "duplicate column name: budget_used"
+              },
+              {
+                "sql": "CREATE TABLE departments_backup AS SELECT id, name, budget FROM departments; DROP TABLE departments;",
+                "error": "You can only execute one statement at a time."
+              },
+              {
+                "sql": "SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS: all rows have budget_used = 0' ELSE 'FAIL: some rows have ",
+                "error": "You can only execute one statement at a time."
+              }
+            ],
+            "reason": "3 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 4,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-s03",
+      "question": "Add end_date column to projects",
+      "output": "{\"scenario_id\": \"s03\", \"title\": \"Add end_date column to projects\", \"affected_tables\": [\"projects\"], \"affected_columns\": {\"projects\": [\"end_date\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Add nullable end_date column to projects table\", \"sql\": \"ALTER TABLE projects ADD COLUMN end_date TEXT NULL;\", \"depends_on\": [], \"affects_table\": \"projects\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 2, \"description\": \"Backfill end_date for completed projects using start_date as a placeholder (sets end_date to start_date where no real end date is known)\", \"sql\": \"UPDATE projects SET end_date = start_date WHERE status = 'completed' AND end_date IS NULL;\", \"depends_on\": [1], \"affects_table\": \"projects\", \"operation\": \"UPDATE\"}, {\"step\": 3, \"description\": \"Backfill end_date for cancelled projects using start_date as a placeholder (sets end_date to start_date where no real end date is known)\", \"sql\": \"UPDATE projects SET end_date = start_date WHERE status = 'cancelled' AND end_date IS NULL;\", \"depends_on\": [1], \"affects_table\": \"projects\", \"operation\": \"UPDATE\"}, {\"step\": 4, \"description\": \"Verify active projects have NULL end_date (no SQL change, audit only \\u2014 sets active project end_dates to NULL in case any were inadvertently set)\", \"sql\": \"UPDATE projects SET end_date = NULL WHERE status = 'active';\", \"depends_on\": [2, 3], \"affects_table\": \"projects\", \"operation\": \"UPDATE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Clear end_date values backfilled for active projects (reverse step 4 \\u2014 restore any overwritten values; since active rows were set to NULL this is a no-op in practice)\", \"sql\": \"UPDATE projects SET end_date = NULL WHERE status = 'active';\", \"reverses_forward_step\": 4}, {\"step\": 2, \"description\": \"Clear end_date backfill for cancelled projects\", \"sql\": \"UPDATE projects SET end_date = NULL WHERE status = 'cancelled';\", \"reverses_forward_step\": 3}, {\"step\": 3, \"description\": \"Clear end_date backfill for completed projects\", \"sql\": \"UPDATE projects SET end_date = NULL WHERE status = 'completed';\", \"reverses_forward_step\": 2}, {\"step\": 4, \"description\": \"Remove end_date column by recreating projects table without it\", \"sql\": \"CREATE TABLE projects_backup AS SELECT id, name, dept_id, start_date, status FROM projects; DROP TABLE projects; ALTER TABLE projects_backup RENAME TO projects;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT (SELECT COUNT(*) FROM projects WHERE status = 'active' AND end_date IS NOT NULL) AS active_with_end_date_count, (SELECT COUNT(*) FROM projects WHERE status = 'completed' AND end_date IS NULL) AS completed_missing_end_date_count, (SELECT COUNT(*) FROM projects WHERE status = 'cancelled' AND end_date IS NULL) AS cancelled_missing_end_date_count, (SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'end_date') AS column_exists;\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": false,
+      "mirror_reasoning": "```json\n{\n  \"verdict\": \"incorrect\",\n  \"confidence\": \"high\",\n  \"issues\": [\n    \"Rollback step 4 uses 'CREATE TABLE projects_backup AS SELECT ...' which is not valid SQLite syntax; SQLite requires 'CREATE TABLE projects_backup AS SELECT ...' only via 'CREATE TABLE ... AS SELECT' which is supported, b",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "4/4",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 9,
+            "errors": [
+              {
+                "sql": "ALTER TABLE projects ADD COLUMN end_date TEXT NULL;",
+                "error": "duplicate column name: end_date"
+              },
+              {
+                "sql": "CREATE TABLE projects_backup AS SELECT id, name, dept_id, start_date, status FROM projects; DROP TAB",
+                "error": "You can only execute one statement at a time."
+              }
+            ],
+            "reason": "2 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 9,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-s04",
+      "question": "Rename hire_date to start_date in employees",
+      "output": "{\"scenario_id\": \"s04\", \"title\": \"Rename hire_date to start_date in employees table\", \"affected_tables\": [\"employees\"], \"affected_columns\": {\"employees\": [\"hire_date\", \"start_date\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create new employees table with start_date instead of hire_date, preserving all other columns, constraints, and foreign keys\", \"sql\": \"CREATE TABLE employees_new (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, start_date TEXT);\", \"depends_on\": [], \"affects_table\": \"employees\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Copy all data from employees into employees_new, mapping hire_date to start_date\", \"sql\": \"INSERT INTO employees_new (id, name, dept_id, salary, start_date) SELECT id, name, dept_id, salary, hire_date FROM employees;\", \"depends_on\": [1], \"affects_table\": \"employees\", \"operation\": \"INSERT\"}, {\"step\": 3, \"description\": \"Drop the old employees table\", \"sql\": \"DROP TABLE employees;\", \"depends_on\": [2], \"affects_table\": \"employees\", \"operation\": \"DROP_TABLE\"}, {\"step\": 4, \"description\": \"Rename employees_new to employees, completing the column rename\", \"sql\": \"ALTER TABLE employees_new RENAME TO employees;\", \"depends_on\": [3], \"affects_table\": \"employees\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Recreate the original employees table with hire_date column\", \"sql\": \"CREATE TABLE employees_rollback (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, hire_date TEXT);\", \"reverses_forward_step\": 4}, {\"step\": 2, \"description\": \"Copy data back from renamed employees table into rollback table, mapping start_date back to hire_date\", \"sql\": \"INSERT INTO employees_rollback (id, name, dept_id, salary, hire_date) SELECT id, name, dept_id, salary, start_date FROM employees;\", \"reverses_forward_step\": 3}, {\"step\": 3, \"description\": \"Drop the migrated employees table\", \"sql\": \"DROP TABLE employees;\", \"reverses_forward_step\": 2}, {\"step\": 4, \"description\": \"Rename rollback table to employees, restoring original schema\", \"sql\": \"ALTER TABLE employees_rollback RENAME TO employees;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END AS column_exists_check FROM pragma_table_info('employees') WHERE name = 'start_date' UNION ALL SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END AS old_column_absent FROM pragma_table_info('employees') WHERE name = 'hire_date' UNION ALL SELECT CASE WHEN (SELECT COUNT(*) FROM employees) = (SELECT COUNT(*) FROM employees WHERE start_date IS NOT NULL OR start_date IS NULL) THEN 'PASS' ELSE 'FAIL' END AS row_count_check UNION ALL SELECT CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END AS projects_start_date_unaffected FROM pragma_table_info('projects') WHERE name = 'start_date';\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The plan correctly uses the SQLite table-rebuild pattern (create new, copy, drop old, rename) to rename hire_date to start_date in employees, preserving all data and foreign key references. The rollback mirrors the forward steps exactly, and the validation SQL confirms both the presence of start_date, absence of hire_date, row count integrity, and that the projects table is unaffected. No other tables (departments, projects, assignments) require changes since only the employees column name is being altered",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "4/4",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 9,
+            "errors": [
+              {
+                "sql": "INSERT INTO employees_new (id, name, dept_id, salary, start_date) SELECT id, name, dept_id, salary, ",
+                "error": "no such column: hire_date"
+              },
+              {
+                "sql": "SELECT CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END AS column_exists_check FROM pragma_table_i",
+                "error": "no such column: start_date"
+              }
+            ],
+            "reason": "2 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 9,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-s05",
+      "question": "Add unique department_code column to departments",
+      "output": "{\"scenario_id\": \"s05\", \"title\": \"Add unique department_code column to departments\", \"affected_tables\": [\"departments\"], \"affected_columns\": {\"departments\": [\"department_code\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Add department_code column as nullable TEXT (no constraints yet) to allow backfill\", \"sql\": \"ALTER TABLE departments ADD COLUMN department_code TEXT;\", \"depends_on\": [], \"affects_table\": \"departments\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 2, \"description\": \"Backfill department_code for all 5 existing departments using unique codes based on their id\", \"sql\": \"UPDATE departments SET department_code = CASE id WHEN 1 THEN 'ENG' WHEN 2 THEN 'SALES' WHEN 3 THEN 'MKT' WHEN 4 THEN 'HR' WHEN 5 THEN 'RES' ELSE 'DEPT' || CAST(id AS TEXT) END;\", \"depends_on\": [1], \"affects_table\": \"departments\", \"operation\": \"UPDATE\"}, {\"step\": 3, \"description\": \"Verify all departments have a non-null department_code before applying constraints (guard check via assertion pattern)\", \"sql\": \"SELECT CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END AS check_result FROM departments WHERE department_code IS NULL;\", \"depends_on\": [2], \"affects_table\": \"departments\", \"operation\": \"OTHER\"}, {\"step\": 4, \"description\": \"Recreate departments table with department_code TEXT NOT NULL UNIQUE constraint (SQLite requires table rebuild for constraints)\", \"sql\": \"CREATE TABLE departments_new (id INTEGER PRIMARY KEY, name TEXT, budget REAL, department_code TEXT NOT NULL UNIQUE);\", \"depends_on\": [3], \"affects_table\": \"departments\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 5, \"description\": \"Copy all data from old departments table into new table\", \"sql\": \"INSERT INTO departments_new (id, name, budget, department_code) SELECT id, name, budget, department_code FROM departments;\", \"depends_on\": [4], \"affects_table\": \"departments\", \"operation\": \"INSERT\"}, {\"step\": 6, \"description\": \"Drop the old departments table\", \"sql\": \"DROP TABLE departments;\", \"depends_on\": [5], \"affects_table\": \"departments\", \"operation\": \"DROP_TABLE\"}, {\"step\": 7, \"description\": \"Rename departments_new to departments\", \"sql\": \"ALTER TABLE departments_new RENAME TO departments;\", \"depends_on\": [6], \"affects_table\": \"departments\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Recreate the original departments table without department_code\", \"sql\": \"CREATE TABLE departments_rollback (id INTEGER PRIMARY KEY, name TEXT, budget REAL);\", \"reverses_forward_step\": 7}, {\"step\": 2, \"description\": \"Copy data back excluding department_code column\", \"sql\": \"INSERT INTO departments_rollback (id, name, budget) SELECT id, name, budget FROM departments;\", \"reverses_forward_step\": 6}, {\"step\": 3, \"description\": \"Drop the migrated departments table\", \"sql\": \"DROP TABLE departments;\", \"reverses_forward_step\": 5}, {\"step\": 4, \"description\": \"Rename rollback table back to departments\", \"sql\": \"ALTER TABLE departments_rollback RENAME TO departments;\", \"reverses_forward_step\": 4}, {\"step\": 5, \"description\": \"No action needed \\u2014 table rebuild in step 4 forward already removed the nullable column; data is restored to original shape\", \"sql\": \"\", \"reverses_forward_step\": 3}, {\"step\": 6, \"description\": \"No action needed \\u2014 backfill update is undone by the table recreation above\", \"sql\": \"\", \"reverses_forward_step\": 2}, {\"step\": 7, \"description\": \"No action needed \\u2014 nullable column addition is undone by the table recreation above\", \"sql\": \"\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN (SELECT COUNT(*) FROM departments WHERE department_code IS NULL) = 0 AND (SELECT COUNT(*) FROM departments) = (SELECT COUNT(DISTINCT department_code) FROM departments) THEN 'MIGRATION OK' ELSE 'MIGRATION FAILED' END AS result;\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The forward steps correctly follow SQLite's table-rebuild pattern for adding NOT NULL UNIQUE constraints: first adding a nullable column, backfilling all 5 rows with distinct codes, creating a new table with the full constraints, copying data, dropping the old table, and renaming. The rollback steps mirror this in reverse by rebuilding the original schema and copying data back without the department_code column, ensuring no data loss. All SQL syntax is valid for SQLite and dependency ordering is respected throughout",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "7/7",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 12,
+            "errors": [
+              {
+                "sql": "DROP TABLE departments;",
+                "error": "FOREIGN KEY constraint failed"
+              },
+              {
+                "sql": "ALTER TABLE departments_new RENAME TO departments;",
+                "error": "there is already another table or index with this name: departments"
+              },
+              {
+                "sql": "DROP TABLE departments;",
+                "error": "FOREIGN KEY constraint failed"
+              },
+              {
+                "sql": "ALTER TABLE departments_rollback RENAME TO departments;",
+                "error": "there is already another table or index with this name: departments"
+              }
+            ],
+            "reason": "4 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 12,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-s06",
+      "question": "Add manager_id self-reference to employees",
+      "output": "{\"scenario_id\": \"s06\", \"title\": \"Add manager_id self-reference to employees\", \"affected_tables\": [\"employees\"], \"affected_columns\": {\"employees\": [\"manager_id\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Add nullable manager_id column to employees table as a self-referential foreign key. SQLite allows adding a column with a FK reference to the same table; NULL values indicate top-level employees with no manager.\", \"sql\": \"ALTER TABLE employees ADD COLUMN manager_id INTEGER NULL REFERENCES employees(id);\", \"depends_on\": [], \"affects_table\": \"employees\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 2, \"description\": \"Verify all non-NULL manager_id values reference valid employee ids (data integrity check). This UPDATE is a no-op placeholder ensuring any stale/invalid references are nullified before relying on the constraint.\", \"sql\": \"UPDATE employees SET manager_id = NULL WHERE manager_id IS NOT NULL AND manager_id NOT IN (SELECT id FROM employees);\", \"depends_on\": [1], \"affects_table\": \"employees\", \"operation\": \"UPDATE\"}, {\"step\": 3, \"description\": \"Create an index on employees.manager_id to support efficient hierarchical queries (e.g. finding all direct reports).\", \"sql\": \"CREATE INDEX IF NOT EXISTS idx_employees_manager_id ON employees(manager_id);\", \"depends_on\": [1], \"affects_table\": \"employees\", \"operation\": \"OTHER\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Drop the index on manager_id before removing the column.\", \"sql\": \"DROP INDEX IF EXISTS idx_employees_manager_id;\", \"reverses_forward_step\": 3}, {\"step\": 2, \"description\": \"Reverse the data integrity nullification step \\u2014 no data to restore since it was only nullifying orphaned references.\", \"sql\": \"\", \"reverses_forward_step\": 2}, {\"step\": 3, \"description\": \"Recreate the employees table without the manager_id column. SQLite does not support DROP COLUMN in older versions, so we use the standard table-rebuild approach: create new table, copy data, drop old, rename.\", \"sql\": \"CREATE TABLE employees_backup AS SELECT id, name, dept_id, salary, hire_date FROM employees; DROP TABLE employees; CREATE TABLE employees ( id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, hire_date TEXT ); INSERT INTO employees (id, name, dept_id, salary, hire_date) SELECT id, name, dept_id, salary, hire_date FROM employees_backup; DROP TABLE employees_backup;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS: All manager_id values are valid (NULL or reference existing employee)' ELSE 'FAIL: Orphaned manager_id references detected' END AS result FROM employees WHERE manager_id IS NOT NULL AND manager_id NOT IN (SELECT id FROM employees); SELECT CASE WHEN COUNT(*) >= 0 THEN 'PASS: manager_id column exists on employees' ELSE 'FAIL' END AS column_check FROM pragma_table_info('employees') WHERE name = 'manager_id';\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The plan correctly adds a nullable self-referential manager_id column to the employees table using ALTER TABLE ADD COLUMN (valid in SQLite), includes a data integrity cleanup step, and creates a supporting index. The rollback properly reverses all three steps in dependency order, using the standard SQLite table-rebuild pattern to drop the column, and no existing data is lost since manager_id is NULL-initialized and the backup/restore selects only the original column",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "3/3",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 6,
+            "errors": [
+              {
+                "sql": "CREATE TABLE employees_backup AS SELECT id, name, dept_id, salary, hire_date FROM employees; DROP TA",
+                "error": "no such column: hire_date"
+              },
+              {
+                "sql": "SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS: All manager_id values are valid (NULL or reference existin",
+                "error": "You can only execute one statement at a time."
+              }
+            ],
+            "reason": "2 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 6,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-s08",
+      "question": "Change assignments.hours from REAL to INTEGER (truncating decimals)",
+      "output": "{\"scenario_id\": \"s08\", \"title\": \"Change assignments.hours from REAL to INTEGER (truncating decimals)\", \"affected_tables\": [\"assignments\"], \"affected_columns\": {\"assignments\": [\"hours\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create a new assignments table with hours defined as INTEGER\", \"sql\": \"CREATE TABLE assignments_new (employee_id INTEGER NOT NULL, project_id INTEGER NOT NULL, role TEXT, hours INTEGER, PRIMARY KEY (employee_id, project_id), FOREIGN KEY (employee_id) REFERENCES employees(id), FOREIGN KEY (project_id) REFERENCES projects(id));\", \"depends_on\": [], \"affects_table\": \"assignments_new\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Copy all rows from assignments into assignments_new, truncating hours to INTEGER using CAST\", \"sql\": \"INSERT INTO assignments_new (employee_id, project_id, role, hours) SELECT employee_id, project_id, role, CAST(hours AS INTEGER) FROM assignments;\", \"depends_on\": [1], \"affects_table\": \"assignments_new\", \"operation\": \"INSERT\"}, {\"step\": 3, \"description\": \"Verify no rows were lost before dropping the old table\", \"sql\": \"\", \"depends_on\": [2], \"affects_table\": null, \"operation\": \"OTHER\"}, {\"step\": 4, \"description\": \"Drop the original assignments table\", \"sql\": \"DROP TABLE assignments;\", \"depends_on\": [3], \"affects_table\": \"assignments\", \"operation\": \"DROP_TABLE\"}, {\"step\": 5, \"description\": \"Rename assignments_new to assignments\", \"sql\": \"ALTER TABLE assignments_new RENAME TO assignments;\", \"depends_on\": [4], \"affects_table\": \"assignments\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Rename current assignments (INTEGER hours) back to assignments_new to free the name\", \"sql\": \"ALTER TABLE assignments RENAME TO assignments_new;\", \"reverses_forward_step\": 5}, {\"step\": 2, \"description\": \"Recreate the original assignments table with hours as REAL\", \"sql\": \"CREATE TABLE assignments (employee_id INTEGER NOT NULL, project_id INTEGER NOT NULL, role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id), FOREIGN KEY (employee_id) REFERENCES employees(id), FOREIGN KEY (project_id) REFERENCES projects(id));\", \"reverses_forward_step\": 4}, {\"step\": 3, \"description\": \"Copy rows back from assignments_new into the restored assignments table, casting INTEGER hours back to REAL\", \"sql\": \"INSERT INTO assignments (employee_id, project_id, role, hours) SELECT employee_id, project_id, role, CAST(hours AS REAL) FROM assignments_new;\", \"reverses_forward_step\": 2}, {\"step\": 4, \"description\": \"Drop the temporary assignments_new table used during rollback\", \"sql\": \"DROP TABLE assignments_new;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN (SELECT COUNT(*) FROM assignments) = (SELECT COUNT(*) FROM assignments) AND (SELECT COUNT(*) FROM pragma_table_info('assignments') WHERE name = 'hours' AND type = 'INTEGER') = 1 AND (SELECT COUNT(*) FROM assignments WHERE hours != CAST(hours AS INTEGER)) = 0 THEN 'MIGRATION OK' ELSE 'MIGRATION FAILED' END AS result;\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The core migration logic is sound: it correctly uses the SQLite new-table/copy/drop/rename pattern (required because SQLite doesn't support ALTER COLUMN), applies CAST(hours AS INTEGER) for truncation, preserves all rows, and provides a complete rollback sequence. The noted issues are minor quality concerns (an empty verification step, a flawed self-referential validation query) rather than correctness blockers, and the irreversible data loss on rollback is an unavoidable consequence of the stated truncation requirement. Issues: Step 3 (verification) has an empty SQL string, making it a no-op placeholder with no actual row-count check performed automatically \u2014 the plan relies on a manual or external verification step.; The validation_sql self-join compares `COUNT(*) FROM assignments` to itself (always equal), so the row-count parity check between old and new table is never actually tested.; Rollback cannot restore truncated fractional data (e.g., 2.7 hours becomes 2 after truncation); this data loss is inherent to the scenario constraint, but the plan does not explicitly acknowledge it",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "4/5",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 9,
+            "errors": [
+              {
+                "sql": "INSERT INTO assignments_new (employee_id, project_id, role, hours) SELECT employee_id, project_id, r",
+                "error": "no such column: role"
+              }
+            ],
+            "reason": "1 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 9,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-s09",
+      "question": "Normalize role in assignments into a lookup table",
+      "output": "{\"scenario_id\": \"s09\", \"title\": \"Normalize role in assignments into a lookup table\", \"affected_tables\": [\"assignments\", \"roles\"], \"affected_columns\": {\"assignments\": [\"role\", \"role_id\"], \"roles\": [\"id\", \"name\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create the roles lookup table with id and unique name columns\", \"sql\": \"CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);\", \"depends_on\": [], \"affects_table\": \"roles\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Populate roles table with all distinct role values from assignments\", \"sql\": \"INSERT INTO roles (name) SELECT DISTINCT role FROM assignments WHERE role IS NOT NULL;\", \"depends_on\": [1], \"affects_table\": \"roles\", \"operation\": \"INSERT\"}, {\"step\": 3, \"description\": \"Add role_id column to assignments table as a nullable integer (FK to roles will be enforced logically)\", \"sql\": \"ALTER TABLE assignments ADD COLUMN role_id INTEGER REFERENCES roles(id);\", \"depends_on\": [2], \"affects_table\": \"assignments\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 4, \"description\": \"Backfill role_id in assignments by joining on matching role name in roles\", \"sql\": \"UPDATE assignments SET role_id = (SELECT id FROM roles WHERE roles.name = assignments.role);\", \"depends_on\": [3], \"affects_table\": \"assignments\", \"operation\": \"UPDATE\"}, {\"step\": 5, \"description\": \"Recreate assignments table without the role TEXT column, keeping role_id FK, to effectively drop the role column (SQLite does not support DROP COLUMN in older versions; use table rebuild)\", \"sql\": \"CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role_id INTEGER REFERENCES roles(id), hours REAL, PRIMARY KEY (employee_id, project_id));\", \"depends_on\": [4], \"affects_table\": \"assignments\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 6, \"description\": \"Copy all data from assignments into assignments_new\", \"sql\": \"INSERT INTO assignments_new (employee_id, project_id, role_id, hours) SELECT employee_id, project_id, role_id, hours FROM assignments;\", \"depends_on\": [5], \"affects_table\": \"assignments\", \"operation\": \"INSERT\"}, {\"step\": 7, \"description\": \"Drop the old assignments table\", \"sql\": \"DROP TABLE assignments;\", \"depends_on\": [6], \"affects_table\": \"assignments\", \"operation\": \"DROP_TABLE\"}, {\"step\": 8, \"description\": \"Rename assignments_new to assignments\", \"sql\": \"ALTER TABLE assignments_new RENAME TO assignments;\", \"depends_on\": [7], \"affects_table\": \"assignments\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Recreate the original assignments table with role TEXT column instead of role_id\", \"sql\": \"CREATE TABLE assignments_old (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id));\", \"reverses_forward_step\": 8}, {\"step\": 2, \"description\": \"Copy data back from assignments to assignments_old, restoring role TEXT by joining with roles\", \"sql\": \"INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_id, r.name, a.hours FROM assignments a LEFT JOIN roles r ON a.role_id = r.id;\", \"reverses_forward_step\": 7}, {\"step\": 3, \"description\": \"Drop the current assignments table (with role_id)\", \"sql\": \"DROP TABLE assignments;\", \"reverses_forward_step\": 6}, {\"step\": 4, \"description\": \"Rename assignments_old back to assignments\", \"sql\": \"ALTER TABLE assignments_old RENAME TO assignments;\", \"reverses_forward_step\": 5}, {\"step\": 5, \"description\": \"Drop the roles lookup table\", \"sql\": \"DROP TABLE roles;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) FROM roles) = (SELECT COUNT(DISTINCT r.name) FROM roles r) AND (SELECT COUNT(*) FROM assignments a LEFT JOIN roles r ON a.role_id = r.id WHERE r.id IS NULL) = 0 AND NOT EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role') AND EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role_id') THEN 'MIGRATION_OK' ELSE 'MIGRATION_FAILED' END AS result;\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The migration plan correctly creates the roles lookup table, populates it with distinct role values, backfills role_id in assignments, rebuilds the assignments table without the old role TEXT column (using the standard SQLite table-rebuild pattern), and provides complete rollback steps that restore the original schema and data by joining back through the roles table. Dependency ordering is valid, all existing data is preserved, and the SQL syntax is appropriate for SQLit",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": false,
+            "uncovered_forward_steps": [
+              2,
+              3,
+              4
+            ],
+            "rollback_coverage": "5/8",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 14,
+            "errors": [
+              {
+                "sql": "CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);",
+                "error": "table roles already exists"
+              },
+              {
+                "sql": "CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTE",
+                "error": "table assignments_new already exists"
+              },
+              {
+                "sql": "INSERT INTO assignments_new (employee_id, project_id, role_id, hours) SELECT employee_id, project_id",
+                "error": "table assignments_new has no column named role_id"
+              },
+              {
+                "sql": "INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_i",
+                "error": "no such column: a.role_id"
+              },
+              {
+                "sql": "SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) F",
+                "error": "no such table: roles"
+              }
+            ],
+            "reason": "5 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "C",
+          "D"
+        ],
+        "sql_extracted": 14,
+        "reason": "failed checks: ['C', 'D']"
+      }
+    },
+    {
+      "id": "B-s10",
+      "question": "Create salary_history table and backfill from current employee salaries",
+      "output": "{\"scenario_id\": \"s10\", \"title\": \"Create salary_history table and backfill from current employee salaries\", \"affected_tables\": [\"salary_history\"], \"affected_columns\": {\"salary_history\": [\"id\", \"employee_id\", \"salary\", \"effective_date\", \"recorded_at\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create the salary_history table with autoincrement primary key, foreign key to employees, salary, effective_date, and recorded_at columns\", \"sql\": \"CREATE TABLE salary_history (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL REFERENCES employees(id), salary REAL NOT NULL, effective_date TEXT NOT NULL, recorded_at TEXT NOT NULL);\", \"depends_on\": [], \"affects_table\": \"salary_history\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Backfill salary_history with each employee's current salary, using hire_date as effective_date and the current timestamp as recorded_at\", \"sql\": \"INSERT INTO salary_history (employee_id, salary, effective_date, recorded_at) SELECT id, salary, hire_date, datetime('now') FROM employees;\", \"depends_on\": [1], \"affects_table\": \"salary_history\", \"operation\": \"INSERT\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Remove all backfilled rows from salary_history (reverses the INSERT...SELECT backfill)\", \"sql\": \"DELETE FROM salary_history;\", \"reverses_forward_step\": 2}, {\"step\": 2, \"description\": \"Drop the salary_history table entirely (reverses table creation)\", \"sql\": \"DROP TABLE IF EXISTS salary_history;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT (SELECT COUNT(*) FROM salary_history) = (SELECT COUNT(*) FROM employees) AS row_counts_match, (SELECT COUNT(*) FROM salary_history WHERE employee_id NOT IN (SELECT id FROM employees)) = 0 AS no_orphan_records, (SELECT COUNT(*) FROM salary_history sh JOIN employees e ON sh.employee_id = e.id WHERE sh.salary != e.salary OR sh.effective_date != e.hire_date) = 0 AS salary_and_date_match, (SELECT COUNT(*) FROM salary_history WHERE recorded_at IS NULL OR recorded_at = '') = 0 AS recorded_at_populated;\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The migration plan correctly creates the salary_history table with all required columns and constraints before inserting data (valid dependency order), backfills using the exact rules specified (hire_date as effective_date, datetime('now') as recorded_at, current salary from employees), and provides a proper rollback that first removes inserted rows then drops the table. The validation SQL comprehensively checks row count parity, referential integrity, salary/date correctness, and recorded_at population",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": false,
+            "missing_tables": [
+              "employees"
+            ],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "2/2",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 5,
+            "errors": [
+              {
+                "sql": "INSERT INTO salary_history (employee_id, salary, effective_date, recorded_at) SELECT id, salary, hir",
+                "error": "no such column: hire_date"
+              },
+              {
+                "sql": "SELECT (SELECT COUNT(*) FROM salary_history) = (SELECT COUNT(*) FROM employees) AS row_counts_match,",
+                "error": "no such table: salary_history"
+              }
+            ],
+            "reason": "2 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "A",
+          "D"
+        ],
+        "sql_extracted": 5,
+        "reason": "failed checks: ['A', 'D']"
+      }
+    },
+    {
+      "id": "B-s11",
+      "question": "Delete cancelled projects and clean up orphan assignments",
+      "output": "{\"scenario_id\": \"s11\", \"title\": \"Delete cancelled projects and clean up orphan assignments\", \"affected_tables\": [\"assignments\", \"projects\"], \"affected_columns\": {\"assignments\": [\"employee_id\", \"project_id\", \"role\", \"hours\"], \"projects\": [\"id\", \"name\", \"dept_id\", \"start_date\", \"status\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create a backup table for cancelled projects before deletion\", \"sql\": \"CREATE TABLE IF NOT EXISTS _backup_cancelled_projects AS SELECT * FROM projects WHERE status = 'cancelled';\", \"depends_on\": [], \"affects_table\": \"_backup_cancelled_projects\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Create a backup table for orphan assignments referencing cancelled projects before deletion\", \"sql\": \"CREATE TABLE IF NOT EXISTS _backup_cancelled_assignments AS SELECT a.* FROM assignments a INNER JOIN projects p ON a.project_id = p.id WHERE p.status = 'cancelled';\", \"depends_on\": [1], \"affects_table\": \"_backup_cancelled_assignments\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 3, \"description\": \"Delete all assignments that reference cancelled projects (FK order: child before parent)\", \"sql\": \"DELETE FROM assignments WHERE project_id IN (SELECT id FROM projects WHERE status = 'cancelled');\", \"depends_on\": [2], \"affects_table\": \"assignments\", \"operation\": \"DELETE\"}, {\"step\": 4, \"description\": \"Delete all projects with status='cancelled'\", \"sql\": \"DELETE FROM projects WHERE status = 'cancelled';\", \"depends_on\": [3], \"affects_table\": \"projects\", \"operation\": \"DELETE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Restore cancelled projects from backup table\", \"sql\": \"INSERT OR IGNORE INTO projects SELECT * FROM _backup_cancelled_projects;\", \"reverses_forward_step\": 4}, {\"step\": 2, \"description\": \"Restore orphan assignments from backup table\", \"sql\": \"INSERT OR IGNORE INTO assignments SELECT * FROM _backup_cancelled_assignments;\", \"reverses_forward_step\": 3}, {\"step\": 3, \"description\": \"Drop the assignments backup table\", \"sql\": \"DROP TABLE IF EXISTS _backup_cancelled_assignments;\", \"reverses_forward_step\": 2}, {\"step\": 4, \"description\": \"Drop the projects backup table\", \"sql\": \"DROP TABLE IF EXISTS _backup_cancelled_projects;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT (SELECT COUNT(*) FROM projects WHERE status = 'cancelled') AS remaining_cancelled_projects, (SELECT COUNT(*) FROM assignments WHERE project_id NOT IN (SELECT id FROM projects)) AS orphan_assignments, (SELECT COUNT(*) FROM _backup_cancelled_projects) AS backed_up_projects, (SELECT COUNT(*) FROM _backup_cancelled_assignments) AS backed_up_assignments;\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The plan correctly handles FK ordering by deleting assignments before projects, backs up both affected tables before any destructive operation, and provides a complete rollback sequence that restores projects first then assignments (respecting FK constraints in reverse). The SQL syntax is valid for SQLite, and the validation query confirms both the deletions and the integrity of the backup",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "4/4",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 9,
+            "errors": [
+              {
+                "sql": "SELECT (SELECT COUNT(*) FROM projects WHERE status = 'cancelled') AS remaining_cancelled_projects, (",
+                "error": "no such table: _backup_cancelled_projects"
+              }
+            ],
+            "reason": "1 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 9,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-s12",
+      "question": "Add priority column to projects with CHECK constraint",
+      "output": "{\"scenario_id\": \"s12\", \"title\": \"Add priority column to projects with CHECK constraint\", \"affected_tables\": [\"projects\"], \"affected_columns\": {\"projects\": [\"priority\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Add priority column to projects table with NOT NULL, DEFAULT 3, and CHECK constraint (priority BETWEEN 1 AND 5). SQLite will populate all existing rows with the default value of 3.\", \"sql\": \"ALTER TABLE projects ADD COLUMN priority INTEGER NOT NULL DEFAULT 3 CHECK(priority BETWEEN 1 AND 5);\", \"depends_on\": [], \"affects_table\": \"projects\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 2, \"description\": \"Verify all existing rows have priority = 3 (the default). This is a data integrity check step with no schema change.\", \"sql\": \"UPDATE projects SET priority = 3 WHERE priority IS NULL;\", \"depends_on\": [1], \"affects_table\": \"projects\", \"operation\": \"UPDATE\"}, {\"step\": 3, \"description\": \"Confirm no rows violate the CHECK constraint (priority BETWEEN 1 AND 5). Raises an error implicitly if any out-of-range value exists by attempting a no-op update that would trigger the constraint check.\", \"sql\": \"SELECT COUNT(*) AS invalid_priority_count FROM projects WHERE priority < 1 OR priority > 5 OR priority IS NULL;\", \"depends_on\": [2], \"affects_table\": \"projects\", \"operation\": \"OTHER\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Rollback step 3: No schema change was made; nothing to undo for the validation query.\", \"sql\": \"\", \"reverses_forward_step\": 3}, {\"step\": 2, \"description\": \"Rollback step 2: No data was structurally changed beyond what the column addition did; the UPDATE of NULLs is moot once the column is dropped.\", \"sql\": \"\", \"reverses_forward_step\": 2}, {\"step\": 3, \"description\": \"Rollback step 1: SQLite does not support DROP COLUMN directly in older versions, so recreate projects table without the priority column, copy data, drop old table, and rename. Uses a transaction for safety.\", \"sql\": \"BEGIN TRANSACTION; CREATE TABLE projects_backup (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), start_date TEXT, status TEXT CHECK(status IN ('active','completed','cancelled'))); INSERT INTO projects_backup (id, name, dept_id, start_date, status) SELECT id, name, dept_id, start_date, status FROM projects; DROP TABLE projects; ALTER TABLE projects_backup RENAME TO projects; COMMIT;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN COUNT(*) = 0 THEN 'MIGRATION OK: all projects have valid priority' ELSE 'MIGRATION FAILED: some projects have invalid or missing priority' END AS result FROM projects WHERE priority IS NULL OR priority < 1 OR priority > 5;\"}",
+      "ground_truth": false,
+      "is_seeded_error": false,
+      "error_type": null,
+      "mirror_verdict": true,
+      "mirror_reasoning": "The plan correctly adds the priority column with NOT NULL DEFAULT 3 and the CHECK constraint, ensuring all existing rows receive the default value of 3 without data loss. The rollback properly uses the table-recreation pattern required by SQLite for column removal, and the only real concerns are a harmless redundant UPDATE step and a minor FK metadata gap in the rollback that is unlikely to cause problems in practice. Issues: Step 2 (UPDATE WHERE priority IS NULL) is a no-op because the column was defined NOT NULL DEFAULT 3, so no NULLs can exist; harmless but unnecessary.; The rollback recreates the projects table without re-creating foreign key references from assignments(project_id), so referential integrity metadata is not fully restored (though SQLite does not enforce FK constraints by default, this could matter if PRAGMA foreign_keys = ON is used).; The original status CHECK constraint syntax in the current schema appears as CHECK('active','completed','cancelled') rather than CHECK(status IN ('active','completed','cancelled')); the rollback corrects this to the proper form, which is an improvement but represents a subtle schema divergence from the original",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "3/3",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 5,
+            "errors": [
+              {
+                "sql": "BEGIN TRANSACTION; CREATE TABLE projects_backup (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER ",
+                "error": "You can only execute one statement at a time."
+              }
+            ],
+            "reason": "1 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 5,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-me01",
+      "question": "Add nullable email column to employees",
+      "output": "{\"scenario_id\": \"s01\", \"title\": \"Add nullable email column to employees\", \"affected_tables\": [\"employees\"], \"affected_columns\": {\"employees\": [\"email\"]}, \"forward_steps\": [], \"rollback_steps\": [], \"validation_sql\": \"SELECT COUNT(*) AS total_rows, SUM(CASE WHEN email IS NULL THEN 1 ELSE 0 END) AS null_email_rows FROM employees; SELECT name FROM pragma_table_info('employees') WHERE name = 'email';\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "missing_step",
+      "mirror_verdict": false,
+      "mirror_reasoning": "Although the plan correctly identifies the affected table and column and includes reasonable validation SQL, both forward_steps and rollback_steps are empty arrays, meaning no actual migration work is performed. At minimum, forward_steps should contain 'ALTER TABLE employees ADD COLUMN email TEXT NULL;' and rollback_steps should contain a full table-recreation sequence (since SQLite's DROP COLUMN support is version-dependent), making this plan incomplete and incorrect as written. Issues: forward_steps is an empty array \u2014 no SQL statements are provided to actually add the 'email' column to the employees table.; rollback_steps is an empty array \u2014 no rollback SQL is provided. SQLite does not support DROP COLUMN in older versions, so a rollback strategy (e.g., recreating the table without the email column) should be explicitly defined.; Without any forward steps, the migration does not fulfill the requirement to add a nullable email column with NULL as the default for existing rows.; The plan claims to address the migration but provides no executable steps, making it functionally a no-op despite correct metadata (affected_tables, affected_columns, validation_sql)",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "0/0",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 1,
+            "errors": [
+              {
+                "sql": "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN email IS NULL THEN 1 ELSE 0 END) AS null_email_rows FRO",
+                "error": "no such column: email"
+              }
+            ],
+            "reason": "1 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 1,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-me02",
+      "question": "Normalize role in assignments into a lookup table",
+      "output": "{\"scenario_id\": \"s09\", \"title\": \"Normalize role in assignments into a lookup table\", \"affected_tables\": [\"assignments\", \"roles\"], \"affected_columns\": {\"assignments\": [\"role\", \"role_id\"], \"roles\": [\"id\", \"name\"]}, \"forward_steps\": [{\"step\": 2, \"description\": \"Populate roles table with all distinct role values from assignments\", \"sql\": \"INSERT INTO roles (name) SELECT DISTINCT role FROM assignments WHERE role IS NOT NULL;\", \"depends_on\": [1], \"affects_table\": \"roles\", \"operation\": \"INSERT\"}, {\"step\": 3, \"description\": \"Add role_id column to assignments table as a nullable integer (FK to roles will be enforced logically)\", \"sql\": \"ALTER TABLE assignments ADD COLUMN role_id INTEGER REFERENCES roles(id);\", \"depends_on\": [2], \"affects_table\": \"assignments\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 4, \"description\": \"Backfill role_id in assignments by joining on matching role name in roles\", \"sql\": \"UPDATE assignments SET role_id = (SELECT id FROM roles WHERE roles.name = assignments.role);\", \"depends_on\": [3], \"affects_table\": \"assignments\", \"operation\": \"UPDATE\"}, {\"step\": 5, \"description\": \"Recreate assignments table without the role TEXT column, keeping role_id FK, to effectively drop the role column (SQLite does not support DROP COLUMN in older versions; use table rebuild)\", \"sql\": \"CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role_id INTEGER REFERENCES roles(id), hours REAL, PRIMARY KEY (employee_id, project_id));\", \"depends_on\": [4], \"affects_table\": \"assignments\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 6, \"description\": \"Copy all data from assignments into assignments_new\", \"sql\": \"INSERT INTO assignments_new (employee_id, project_id, role_id, hours) SELECT employee_id, project_id, role_id, hours FROM assignments;\", \"depends_on\": [5], \"affects_table\": \"assignments\", \"operation\": \"INSERT\"}, {\"step\": 7, \"description\": \"Drop the old assignments table\", \"sql\": \"DROP TABLE assignments;\", \"depends_on\": [6], \"affects_table\": \"assignments\", \"operation\": \"DROP_TABLE\"}, {\"step\": 8, \"description\": \"Rename assignments_new to assignments\", \"sql\": \"ALTER TABLE assignments_new RENAME TO assignments;\", \"depends_on\": [7], \"affects_table\": \"assignments\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Recreate the original assignments table with role TEXT column instead of role_id\", \"sql\": \"CREATE TABLE assignments_old (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id));\", \"reverses_forward_step\": 8}, {\"step\": 2, \"description\": \"Copy data back from assignments to assignments_old, restoring role TEXT by joining with roles\", \"sql\": \"INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_id, r.name, a.hours FROM assignments a LEFT JOIN roles r ON a.role_id = r.id;\", \"reverses_forward_step\": 7}, {\"step\": 3, \"description\": \"Drop the current assignments table (with role_id)\", \"sql\": \"DROP TABLE assignments;\", \"reverses_forward_step\": 6}, {\"step\": 4, \"description\": \"Rename assignments_old back to assignments\", \"sql\": \"ALTER TABLE assignments_old RENAME TO assignments;\", \"reverses_forward_step\": 5}], \"validation_sql\": \"SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) FROM roles) = (SELECT COUNT(DISTINCT r.name) FROM roles r) AND (SELECT COUNT(*) FROM assignments a LEFT JOIN roles r ON a.role_id = r.id WHERE r.id IS NULL) = 0 AND NOT EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role') AND EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role_id') THEN 'MIGRATION_OK' ELSE 'MIGRATION_FAILED' END AS result;\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "missing_step",
+      "mirror_verdict": false,
+      "mirror_reasoning": "The most critical flaw is that forward step 1 \u2014 which must CREATE the roles table before it can be populated \u2014 is entirely absent from the forward_steps list, making the plan incomplete and non-executable as written. Additionally, the rollback sequence fails to drop the roles table as explicitly required, leaving the database in an intermediate state after rollback. Issues: Step 1 is missing from the forward_steps array. The plan references 'depends_on: [1]' in step 2, implying step 1 creates the roles table (CREATE TABLE roles ...), but no such step exists in the forward_steps list.; The rollback steps only cover forward steps 5\u20138 (the table rebuild phase) but do not drop the roles table, which is required by the rollback constraint ('drop roles table, restore role TEXT column with original values').; The rollback steps do not reverse forward steps 2\u20134 (populating roles and adding/backfilling role_id). After rollback completes, the roles table still exists, violating the stated rollback requirement.; The rollback step that reverses forward step 5 is labeled 'reverses_forward_step: 8' and vice versa \u2014 the reversal numbering appears inverted relative to the forward steps they undo, which is a documentation/correctness error.; The validation SQL uses 'NOT EXISTS (SELECT 1 FROM pragma_table_info(''assignments'') WHERE name = ''role'')' but after the table rebuild the old role TEXT column is already gone, so this check is correct in isolation; however, if SQLite's DROP COLUMN is supported (SQLite >= 3.35.0), the plan unnecessarily does a full table rebuild, though this is not a correctness issue per se.; There is no NOT NULL constraint enforced on assignments.role_id in the final schema (it is nullable in both assignments_new and the target schema description), yet the validation SQL checks COUNT(*) WHERE role_id IS NULL = 0, which would fail for any assignment where role was originally NULL \u2014 the plan does not handle NULL role values explicitly",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": false,
+            "uncovered_forward_steps": [
+              2,
+              3,
+              4
+            ],
+            "rollback_coverage": "4/7",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 12,
+            "errors": [
+              {
+                "sql": "CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTE",
+                "error": "table assignments_new already exists"
+              },
+              {
+                "sql": "INSERT INTO assignments_new (employee_id, project_id, role_id, hours) SELECT employee_id, project_id",
+                "error": "table assignments_new has no column named role_id"
+              },
+              {
+                "sql": "INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_i",
+                "error": "no such column: a.role_id"
+              },
+              {
+                "sql": "SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) F",
+                "error": "no such column: role_id"
+              }
+            ],
+            "reason": "4 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "C",
+          "D"
+        ],
+        "sql_extracted": 12,
+        "reason": "failed checks: ['C', 'D']"
+      }
+    },
+    {
+      "id": "B-me03",
+      "question": "Normalize role in assignments into a lookup table",
+      "output": "{\"scenario_id\": \"s09\", \"title\": \"Normalize role in assignments into a lookup table\", \"affected_tables\": [\"assignments\", \"roles\"], \"affected_columns\": {\"assignments\": [\"role\", \"role_id\"], \"roles\": [\"id\", \"name\"]}, \"forward_steps\": [{\"step\": 2, \"description\": \"Populate roles table with all distinct role values from assignments\", \"sql\": \"INSERT INTO roles (name) SELECT DISTINCT role FROM assignments WHERE role IS NOT NULL;\", \"depends_on\": [2], \"affects_table\": \"roles\", \"operation\": \"INSERT\"}, {\"step\": 1, \"description\": \"Create the roles lookup table with id and unique name columns\", \"sql\": \"CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);\", \"depends_on\": [], \"affects_table\": \"roles\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 3, \"description\": \"Add role_id column to assignments table as a nullable integer (FK to roles will be enforced logically)\", \"sql\": \"ALTER TABLE assignments ADD COLUMN role_id INTEGER REFERENCES roles(id);\", \"depends_on\": [2], \"affects_table\": \"assignments\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 4, \"description\": \"Backfill role_id in assignments by joining on matching role name in roles\", \"sql\": \"UPDATE assignments SET role_id = (SELECT id FROM roles WHERE roles.name = assignments.role);\", \"depends_on\": [3], \"affects_table\": \"assignments\", \"operation\": \"UPDATE\"}, {\"step\": 5, \"description\": \"Recreate assignments table without the role TEXT column, keeping role_id FK, to effectively drop the role column (SQLite does not support DROP COLUMN in older versions; use table rebuild)\", \"sql\": \"CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role_id INTEGER REFERENCES roles(id), hours REAL, PRIMARY KEY (employee_id, project_id));\", \"depends_on\": [4], \"affects_table\": \"assignments\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 6, \"description\": \"Copy all data from assignments into assignments_new\", \"sql\": \"INSERT INTO assignments_new (employee_id, project_id, role_id, hours) SELECT employee_id, project_id, role_id, hours FROM assignments;\", \"depends_on\": [5], \"affects_table\": \"assignments\", \"operation\": \"INSERT\"}, {\"step\": 7, \"description\": \"Drop the old assignments table\", \"sql\": \"DROP TABLE assignments;\", \"depends_on\": [6], \"affects_table\": \"assignments\", \"operation\": \"DROP_TABLE\"}, {\"step\": 8, \"description\": \"Rename assignments_new to assignments\", \"sql\": \"ALTER TABLE assignments_new RENAME TO assignments;\", \"depends_on\": [7], \"affects_table\": \"assignments\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Recreate the original assignments table with role TEXT column instead of role_id\", \"sql\": \"CREATE TABLE assignments_old (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id));\", \"reverses_forward_step\": 8}, {\"step\": 2, \"description\": \"Copy data back from assignments to assignments_old, restoring role TEXT by joining with roles\", \"sql\": \"INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_id, r.name, a.hours FROM assignments a LEFT JOIN roles r ON a.role_id = r.id;\", \"reverses_forward_step\": 7}, {\"step\": 3, \"description\": \"Drop the current assignments table (with role_id)\", \"sql\": \"DROP TABLE assignments;\", \"reverses_forward_step\": 6}, {\"step\": 4, \"description\": \"Rename assignments_old back to assignments\", \"sql\": \"ALTER TABLE assignments_old RENAME TO assignments;\", \"reverses_forward_step\": 5}, {\"step\": 5, \"description\": \"Drop the roles lookup table\", \"sql\": \"DROP TABLE roles;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) FROM roles) = (SELECT COUNT(DISTINCT r.name) FROM roles r) AND (SELECT COUNT(*) FROM assignments a LEFT JOIN roles r ON a.role_id = r.id WHERE r.id IS NULL) = 0 AND NOT EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role') AND EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role_id') THEN 'MIGRATION_OK' ELSE 'MIGRATION_FAILED' END AS result;\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "wrong_ordering",
+      "mirror_verdict": false,
+      "mirror_reasoning": "The plan is logically sound in its overall approach (create lookup table, backfill, rebuild assignments) but contains a critical ordering defect: Step 2 (INSERT into roles) is placed before Step 1 (CREATE TABLE roles) in the array, and Step 2's depends_on field incorrectly self-references [2] instead of [1]. These issues would cause execution failure if steps are processed in array order. Additionally, the rollback plan does not safely handle partial migration states, and the final schema does not enforce NOT NULL on role_id at the DDL level. Issues: Step 2 is listed before Step 1 in the forward_steps array, meaning the INSERT into 'roles' appears before the CREATE TABLE for 'roles'. While step numbers are provided, if executed in array order this would fail. The depends_on field for Step 2 also incorrectly references [2] (itself) instead of [1].; Step 2's depends_on lists [2], which is a self-referential dependency \u2014 it should be [1] to correctly declare dependency on the CREATE TABLE step.; The rollback steps assume the current 'assignments' table still has 'role_id' and that 'roles' still exists, which is valid only if rollback is triggered after forward Step 8. However, if rollback is triggered mid-migration (e.g., after Step 7 drops the old assignments but before Step 8 renames), the rollback JOIN on 'assignments' would fail because 'assignments' no longer exists at that point. The rollback plan does not account for partial migration states.; There is no explicit NOT NULL constraint enforcement on role_id in the final assignments table definition (Step 5), even though the target schema implies role_id should be a required FK. Assignments with a NULL role (if any exist) would silently be allowed through.; The validation SQL checks that no role_id IS NULL, but since role_id is not defined as NOT NULL in the DDL, this is only a runtime check and not enforced structurally by the schema",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": false,
+            "has_cycle": true,
+            "sequential_violation": false,
+            "topological_order": [
+              1
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": false,
+            "uncovered_forward_steps": [
+              2,
+              3,
+              4
+            ],
+            "rollback_coverage": "5/8",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 14,
+            "errors": [
+              {
+                "sql": "CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);",
+                "error": "table roles already exists"
+              },
+              {
+                "sql": "CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTE",
+                "error": "table assignments_new already exists"
+              },
+              {
+                "sql": "INSERT INTO assignments_new (employee_id, project_id, role_id, hours) SELECT employee_id, project_id",
+                "error": "table assignments_new has no column named role_id"
+              },
+              {
+                "sql": "INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_i",
+                "error": "no such column: a.role_id"
+              },
+              {
+                "sql": "SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) F",
+                "error": "no such table: roles"
+              }
+            ],
+            "reason": "5 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "B",
+          "C",
+          "D"
+        ],
+        "sql_extracted": 14,
+        "reason": "failed checks: ['B', 'C', 'D']"
+      }
+    },
+    {
+      "id": "B-me05",
+      "question": "Add nullable email column to employees",
+      "output": "{\"scenario_id\": \"s01\", \"title\": \"Add nullable email column to employees\", \"affected_tables\": [\"employees\"], \"affected_columns\": {\"employees\": [\"email\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Add nullable email column to employees table. Existing rows will automatically receive NULL for this column.\", \"sql\": \"ALTER TABLE employees ADD COLUMN email TEXT NULL;\", \"depends_on\": [], \"affects_table\": \"employees\", \"operation\": \"ADD_COLUMN\"}], \"rollback_steps\": [], \"validation_sql\": \"SELECT COUNT(*) AS total_rows, SUM(CASE WHEN email IS NULL THEN 1 ELSE 0 END) AS null_email_rows FROM employees; SELECT name FROM pragma_table_info('employees') WHERE name = 'email';\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "incomplete_rollback",
+      "mirror_verdict": false,
+      "mirror_reasoning": "The forward migration step is correct and complete \u2014 'ALTER TABLE employees ADD COLUMN email TEXT NULL;' is valid SQLite syntax, adds the column as nullable, and existing rows will receive NULL automatically with zero downtime. However, the plan explicitly omits any rollback steps despite the scenario requiring rollback support, which is a critical gap that makes the plan incomplete and therefore incorrect. Issues: No rollback step is provided despite the scenario explicitly requiring one. SQLite does not support DROP COLUMN in older versions, but in SQLite 3.35.0+ a rollback could use 'ALTER TABLE employees DROP COLUMN email;'. The plan must include at least a documented rollback procedure (e.g., recreate the table without the column, copy data, swap tables) for environments that may not support DROP COLUMN, or use the supported DROP COLUMN syntax for SQLite \u2265 3.35.0",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": false,
+            "uncovered_forward_steps": [
+              1
+            ],
+            "rollback_coverage": "0/1",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 2,
+            "errors": [
+              {
+                "sql": "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN email IS NULL THEN 1 ELSE 0 END) AS null_email_rows FRO",
+                "error": "You can only execute one statement at a time."
+              }
+            ],
+            "reason": "1 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "C",
+          "D"
+        ],
+        "sql_extracted": 2,
+        "reason": "failed checks: ['C', 'D']"
+      }
+    },
+    {
+      "id": "B-me07",
+      "question": "Delete cancelled projects and clean up orphan assignments",
+      "output": "{\"scenario_id\": \"s11\", \"title\": \"Delete cancelled projects and clean up orphan assignments\", \"affected_tables\": [\"assignments\", \"projects\"], \"affected_columns\": {\"assignments\": [\"employee_id\", \"project_id\", \"role\", \"hours\"], \"projects\": [\"id\", \"name\", \"dept_id\", \"start_date\", \"status\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create a backup table for cancelled projects before deletion\", \"sql\": \"CREATE TABLE IF NOT EXISTS _backup_cancelled_projects AS SELECT * FROM projects WHERE status = 'cancelled';\", \"depends_on\": [], \"affects_table\": \"_backup_cancelled_projects\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Create a backup table for orphan assignments referencing cancelled projects before deletion\", \"sql\": \"CREATE TABLE IF NOT EXISTS _backup_cancelled_assignments AS SELECT a.* FROM assignments a INNER JOIN projects p ON a.project_id = p.id WHERE p.status = 'cancelled';\", \"depends_on\": [1], \"affects_table\": \"_backup_cancelled_assignments\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 3, \"description\": \"Delete all assignments that reference cancelled projects (FK order: child before parent)\", \"sql\": \"DELETE FROM assignments WHERE project_id IN (SELECT id FROM projects WHERE status = 'cancelled');\", \"depends_on\": [2], \"affects_table\": \"assignments\", \"operation\": \"DELETE\"}, {\"step\": 4, \"description\": \"Delete all projects with status='cancelled'\", \"sql\": \"DELETE FROM projects WHERE status = 'cancelled';\", \"depends_on\": [3], \"affects_table\": \"projects\", \"operation\": \"DELETE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Restore cancelled projects from backup table\", \"sql\": \"INSERT OR IGNORE INTO projects SELECT * FROM _backup_cancelled_projects;\", \"reverses_forward_step\": 4}, {\"step\": 2, \"description\": \"Restore orphan assignments from backup table\", \"sql\": \"INSERT OR IGNORE INTO assignments SELECT * FROM _backup_cancelled_assignments;\", \"reverses_forward_step\": 3}, {\"step\": 3, \"description\": \"Drop the assignments backup table\", \"sql\": \"DROP TABLE IF EXISTS _backup_cancelled_assignments;\", \"reverses_forward_step\": 2}], \"validation_sql\": \"SELECT (SELECT COUNT(*) FROM projects WHERE status = 'cancelled') AS remaining_cancelled_projects, (SELECT COUNT(*) FROM assignments WHERE project_id NOT IN (SELECT id FROM projects)) AS orphan_assignments, (SELECT COUNT(*) FROM _backup_cancelled_projects) AS backed_up_projects, (SELECT COUNT(*) FROM _backup_cancelled_assignments) AS backed_up_assignments;\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "incomplete_rollback",
+      "mirror_verdict": false,
+      "mirror_reasoning": "The plan is logically sound in terms of FK ordering (assignments deleted before projects) and data preservation via backup tables, but the rollback section is incomplete: it drops _backup_cancelled_assignments but never drops _backup_cancelled_projects, leaving a dangling table. Additionally, 'CREATE TABLE AS SELECT' has limited/inconsistent support in SQLite and should be split into a CREATE TABLE and INSERT for reliability. Issues: Rollback step 3 drops the assignments backup table but never drops the projects backup table (_backup_cancelled_projects), leaving it as a permanent artifact after rollback is complete.; There is no rollback step that drops _backup_cancelled_projects, meaning the backup table persists indefinitely even after a successful rollback, which is inconsistent with the cleanup of _backup_cancelled_assignments.; The rollback steps are missing a step to drop _backup_cancelled_projects (a step that reverses forward step 1), so the rollback plan is incomplete.; The validation SQL references _backup_cancelled_projects and _backup_cancelled_assignments directly; if the backup tables were dropped as part of a full cleanup flow, the validation query would fail \u2014 the plan provides no guidance on when validation should be run relative to backup table lifecycle.; CREATE TABLE ... AS SELECT is not standard SQLite syntax for copying data; while some SQLite versions support it, the standard and universally reliable approach is CREATE TABLE ... followed by INSERT INTO ... SELECT *, making this a portability/correctness risk depending on SQLite version",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": false,
+            "uncovered_forward_steps": [
+              1
+            ],
+            "rollback_coverage": "3/4",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 8,
+            "errors": [
+              {
+                "sql": "INSERT OR IGNORE INTO projects SELECT * FROM _backup_cancelled_projects;",
+                "error": "table projects has 7 columns but 6 values were supplied"
+              },
+              {
+                "sql": "SELECT (SELECT COUNT(*) FROM projects WHERE status = 'cancelled') AS remaining_cancelled_projects, (",
+                "error": "no such table: _backup_cancelled_assignments"
+              }
+            ],
+            "reason": "2 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "C",
+          "D"
+        ],
+        "sql_extracted": 8,
+        "reason": "failed checks: ['C', 'D']"
+      }
+    },
+    {
+      "id": "B-me08",
+      "question": "Normalize role in assignments into a lookup table",
+      "output": "{\"scenario_id\": \"s09\", \"title\": \"Normalize role in assignments into a lookup table\", \"affected_tables\": [\"assignments\", \"roles\"], \"affected_columns\": {\"assignments\": [\"role\", \"role_id\"], \"roles\": [\"id\", \"name\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create the roles lookup table with id and unique name columns\", \"sql\": \"CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);\", \"depends_on\": [], \"affects_table\": \"roles\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Populate roles table with all distinct role values from assignments [NOTE: data migration omitted]\", \"sql\": \"\", \"depends_on\": [1], \"affects_table\": \"roles\", \"operation\": \"INSERT\"}, {\"step\": 3, \"description\": \"Add role_id column to assignments table as a nullable integer (FK to roles will be enforced logically)\", \"sql\": \"ALTER TABLE assignments ADD COLUMN role_id INTEGER REFERENCES roles(id);\", \"depends_on\": [2], \"affects_table\": \"assignments\", \"operation\": \"ADD_COLUMN\"}, {\"step\": 4, \"description\": \"Backfill role_id in assignments by joining on matching role name in roles\", \"sql\": \"UPDATE assignments SET role_id = (SELECT id FROM roles WHERE roles.name = assignments.role);\", \"depends_on\": [3], \"affects_table\": \"assignments\", \"operation\": \"UPDATE\"}, {\"step\": 5, \"description\": \"Recreate assignments table without the role TEXT column, keeping role_id FK, to effectively drop the role column (SQLite does not support DROP COLUMN in older versions; use table rebuild)\", \"sql\": \"CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role_id INTEGER REFERENCES roles(id), hours REAL, PRIMARY KEY (employee_id, project_id));\", \"depends_on\": [4], \"affects_table\": \"assignments\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 6, \"description\": \"Copy all data from assignments into assignments_new [NOTE: data migration omitted]\", \"sql\": \"\", \"depends_on\": [5], \"affects_table\": \"assignments\", \"operation\": \"INSERT\"}, {\"step\": 7, \"description\": \"Drop the old assignments table\", \"sql\": \"DROP TABLE assignments;\", \"depends_on\": [6], \"affects_table\": \"assignments\", \"operation\": \"DROP_TABLE\"}, {\"step\": 8, \"description\": \"Rename assignments_new to assignments\", \"sql\": \"ALTER TABLE assignments_new RENAME TO assignments;\", \"depends_on\": [7], \"affects_table\": \"assignments\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Recreate the original assignments table with role TEXT column instead of role_id\", \"sql\": \"CREATE TABLE assignments_old (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id));\", \"reverses_forward_step\": 8}, {\"step\": 2, \"description\": \"Copy data back from assignments to assignments_old, restoring role TEXT by joining with roles\", \"sql\": \"INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_id, r.name, a.hours FROM assignments a LEFT JOIN roles r ON a.role_id = r.id;\", \"reverses_forward_step\": 7}, {\"step\": 3, \"description\": \"Drop the current assignments table (with role_id)\", \"sql\": \"DROP TABLE assignments;\", \"reverses_forward_step\": 6}, {\"step\": 4, \"description\": \"Rename assignments_old back to assignments\", \"sql\": \"ALTER TABLE assignments_old RENAME TO assignments;\", \"reverses_forward_step\": 5}, {\"step\": 5, \"description\": \"Drop the roles lookup table\", \"sql\": \"DROP TABLE roles;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) FROM roles) = (SELECT COUNT(DISTINCT r.name) FROM roles r) AND (SELECT COUNT(*) FROM assignments a LEFT JOIN roles r ON a.role_id = r.id WHERE r.id IS NULL) = 0 AND NOT EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role') AND EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role_id') THEN 'MIGRATION_OK' ELSE 'MIGRATION_FAILED' END AS result;\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "data_loss",
+      "mirror_verdict": false,
+      "mirror_reasoning": "The plan is structurally sound and in correct dependency order, but it is critically incomplete: both the INSERT to populate the roles lookup table (Step 2) and the INSERT to copy data into assignments_new (Step 6) have empty SQL strings marked as omitted. These omissions mean the migration would destroy all existing assignment data and fail to correctly map role names to IDs, making the plan incorrect as written. Issues: Step 2 has an empty SQL string \u2014 the INSERT to populate the roles table with distinct role values from assignments is explicitly omitted ('data migration omitted'). This is a required step; without it, the backfill in Step 4 will set all role_id values to NULL.; Step 6 has an empty SQL string \u2014 the INSERT to copy data from assignments into assignments_new is explicitly omitted ('data migration omitted'). This means all existing assignment rows would be lost when the old table is dropped in Step 7.; The new assignments_new table defines role_id as nullable (no NOT NULL constraint), which may be acceptable during migration, but the final schema should enforce NOT NULL on role_id if all assignments are expected to have a role. The target schema description implies role_id is required (replacing a previously always-present TEXT column).; The rollback Step 2 attempts to JOIN against 'assignments' which, at rollback execution time, would be the renamed assignments table (with role_id); this is logically correct only if roles table still exists at that point \u2014 which it does since DROP roles is last \u2014 but the dependency order description is slightly misleading since it references forward steps out of order.; The validation SQL checks that no 'role' column exists in assignments, but this check relies on pragma_table_info which may behave differently depending on SQLite version; more critically, the validation would pass even if Steps 2 and 6 were empty (all rows lost) because COUNT(*) = 0 satisfies the NULL check trivially",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": false,
+            "uncovered_forward_steps": [
+              2,
+              3,
+              4
+            ],
+            "rollback_coverage": "5/8",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 12,
+            "errors": [
+              {
+                "sql": "CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);",
+                "error": "table roles already exists"
+              },
+              {
+                "sql": "CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTE",
+                "error": "table assignments_new already exists"
+              },
+              {
+                "sql": "INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_i",
+                "error": "no such column: a.role_id"
+              },
+              {
+                "sql": "SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) F",
+                "error": "no such table: roles"
+              }
+            ],
+            "reason": "4 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "C",
+          "D"
+        ],
+        "sql_extracted": 12,
+        "reason": "failed checks: ['C', 'D']"
+      }
+    },
+    {
+      "id": "B-me09",
+      "question": "Create salary_history table and backfill from current employee salaries",
+      "output": "{\"scenario_id\": \"s10\", \"title\": \"Create salary_history table and backfill from current employee salaries\", \"affected_tables\": [\"salary_history\"], \"affected_columns\": {\"salary_history\": [\"id\", \"employee_id\", \"salary\", \"effective_date\", \"recorded_at\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create the salary_history table with autoincrement primary key, foreign key to employees, salary, effective_date, and recorded_at columns\", \"sql\": \"CREATE TABLE salary_history (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL REFERENCES employees(id), salary REAL NOT NULL, effective_date TEXT NOT NULL, recorded_at TEXT NOT NULL);\", \"depends_on\": [], \"affects_table\": \"salary_history\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Backfill salary_history with each employee's current salary, using hire_date as effective_date and the current timestamp as recorded_at [NOTE: data migration omitted]\", \"sql\": \"\", \"depends_on\": [1], \"affects_table\": \"salary_history\", \"operation\": \"INSERT\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Remove all backfilled rows from salary_history (reverses the INSERT...SELECT backfill)\", \"sql\": \"DELETE FROM salary_history;\", \"reverses_forward_step\": 2}, {\"step\": 2, \"description\": \"Drop the salary_history table entirely (reverses table creation)\", \"sql\": \"DROP TABLE IF EXISTS salary_history;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT (SELECT COUNT(*) FROM salary_history) = (SELECT COUNT(*) FROM employees) AS row_counts_match, (SELECT COUNT(*) FROM salary_history WHERE employee_id NOT IN (SELECT id FROM employees)) = 0 AS no_orphan_records, (SELECT COUNT(*) FROM salary_history sh JOIN employees e ON sh.employee_id = e.id WHERE sh.salary != e.salary OR sh.effective_date != e.hire_date) = 0 AS salary_and_date_match, (SELECT COUNT(*) FROM salary_history WHERE recorded_at IS NULL OR recorded_at = '') = 0 AS recorded_at_populated;\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "data_loss",
+      "mirror_verdict": false,
+      "mirror_reasoning": "The plan is structurally sound (correct table DDL, valid dependency order, valid rollback via DROP TABLE), but it is incomplete because the mandatory backfill INSERT SQL is explicitly omitted in forward step 2. Without that statement, the core business requirement \u2014 that each employee's current salary becomes the first salary_history entry \u2014 is not met, making the plan incorrect as submitted. Issues: Forward step 2 has an empty SQL string for the backfill INSERT. The plan explicitly notes 'data migration omitted', meaning the actual INSERT...SELECT statement (e.g., INSERT INTO salary_history (employee_id, salary, effective_date, recorded_at) SELECT id, salary, hire_date, datetime('now') FROM employees;) is missing. This means the backfill requirement is not fulfilled.; The rollback step 1 (DELETE FROM salary_history) is redundant and unnecessary: rolling back step 2 is moot since step 2 has no SQL and performs no data insertion. More critically, if the goal is a clean rollback, DROP TABLE (rollback step 2) alone is sufficient \u2014 the DELETE step adds no safety value and could cause confusion.; Because the backfill SQL is omitted, the validation query will likely fail the 'row_counts_match' and 'salary_and_date_match' checks, meaning the plan cannot be verified as complete even with the provided validation SQL.; The plan's 'affected_tables' only lists 'salary_history', which is acceptable since only a new table is added and no existing tables are modified \u2014 this is not an error but worth noting for completen",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": false,
+            "missing_tables": [
+              "employees"
+            ],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "2/2",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 4,
+            "errors": [
+              {
+                "sql": "CREATE TABLE salary_history (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL REFE",
+                "error": "table salary_history already exists"
+              },
+              {
+                "sql": "SELECT (SELECT COUNT(*) FROM salary_history) = (SELECT COUNT(*) FROM employees) AS row_counts_match,",
+                "error": "no such table: salary_history"
+              }
+            ],
+            "reason": "2 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "A",
+          "D"
+        ],
+        "sql_extracted": 4,
+        "reason": "failed checks: ['A', 'D']"
+      }
+    },
+    {
+      "id": "B-me10",
+      "question": "Rename hire_date to start_date in employees",
+      "output": "{\"scenario_id\": \"s04\", \"title\": \"Rename hire_date to start_date in employees table\", \"affected_tables\": [\"employees\"], \"affected_columns\": {\"employees\": [\"hire_date\", \"start_date\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create new employees table with start_date instead of hire_date, preserving all other columns, constraints, and foreign keys\", \"sql\": \"CREATE TABLE employees_new (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, hire_date TEXT);\", \"depends_on\": [], \"affects_table\": \"employees\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Copy all data from employees into employees_new, mapping hire_date to start_date\", \"sql\": \"INSERT INTO employees_new (id, name, dept_id, salary, hire_date) SELECT id, name, dept_id, salary, hire_date FROM employees;\", \"depends_on\": [1], \"affects_table\": \"employees\", \"operation\": \"INSERT\"}, {\"step\": 3, \"description\": \"Drop the old employees table\", \"sql\": \"DROP TABLE employees;\", \"depends_on\": [2], \"affects_table\": \"employees\", \"operation\": \"DROP_TABLE\"}, {\"step\": 4, \"description\": \"Rename employees_new to employees, completing the column rename\", \"sql\": \"ALTER TABLE employees_new RENAME TO employees;\", \"depends_on\": [3], \"affects_table\": \"employees\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Recreate the original employees table with hire_date column\", \"sql\": \"CREATE TABLE employees_rollback (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, hire_date TEXT);\", \"reverses_forward_step\": 4}, {\"step\": 2, \"description\": \"Copy data back from renamed employees table into rollback table, mapping start_date back to hire_date\", \"sql\": \"INSERT INTO employees_rollback (id, name, dept_id, salary, hire_date) SELECT id, name, dept_id, salary, hire_date FROM employees;\", \"reverses_forward_step\": 3}, {\"step\": 3, \"description\": \"Drop the migrated employees table\", \"sql\": \"DROP TABLE employees;\", \"reverses_forward_step\": 2}, {\"step\": 4, \"description\": \"Rename rollback table to employees, restoring original schema\", \"sql\": \"ALTER TABLE employees_rollback RENAME TO employees;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END AS column_exists_check FROM pragma_table_info('employees') WHERE name = 'hire_date' UNION ALL SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END AS old_column_absent FROM pragma_table_info('employees') WHERE name = 'hire_date' UNION ALL SELECT CASE WHEN (SELECT COUNT(*) FROM employees) = (SELECT COUNT(*) FROM employees WHERE hire_date IS NOT NULL OR hire_date IS NULL) THEN 'PASS' ELSE 'FAIL' END AS row_count_check UNION ALL SELECT CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END AS projects_start_date_unaffected FROM pragma_table_info('projects') WHERE name = 'hire_date';\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "wrong_column_ref",
+      "mirror_verdict": false,
+      "mirror_reasoning": "```json\n{\n  \"verdict\": \"incorrect\",\n  \"confidence\": \"high\",\n  \"issues\": [\n    \"Forward step 1 creates 'employees_new' with column named 'hire_date' instead of 'start_date', defeating the purpose of the migration. The new table should define the column as 'start_date TEXT'.\",\n    \"Forward step 2 in",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "4/4",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 9,
+            "errors": [
+              {
+                "sql": "INSERT INTO employees_new (id, name, dept_id, salary, hire_date) SELECT id, name, dept_id, salary, h",
+                "error": "no such column: hire_date"
+              },
+              {
+                "sql": "CREATE TABLE employees_rollback (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES depar",
+                "error": "table employees_rollback already exists"
+              }
+            ],
+            "reason": "2 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 9,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-me11",
+      "question": "Change assignments.hours from REAL to INTEGER (truncating decimals)",
+      "output": "{\"scenario_id\": \"s08\", \"title\": \"Change assignments.hours from REAL to INTEGER (truncating decimals)\", \"affected_tables\": [\"assignments\"], \"affected_columns\": {\"assignments\": [\"hours\"]}, \"forward_steps\": [{\"step\": 1, \"description\": \"Create a new assignments table with hours defined as INTEGER\", \"sql\": \"CREATE TABLE assignments_new (employee_id REAL NOT NULL, project_id REAL NOT NULL, role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id), FOREIGN KEY (employee_id) REFERENCES employees(id), FOREIGN KEY (project_id) REFERENCES projects(id));\", \"depends_on\": [], \"affects_table\": \"assignments_new\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 2, \"description\": \"Copy all rows from assignments into assignments_new, truncating hours to INTEGER using CAST\", \"sql\": \"INSERT INTO assignments_new (employee_id, project_id, role, hours) SELECT employee_id, project_id, role, CAST(hours AS REAL) FROM assignments;\", \"depends_on\": [1], \"affects_table\": \"assignments_new\", \"operation\": \"INSERT\"}, {\"step\": 3, \"description\": \"Verify no rows were lost before dropping the old table\", \"sql\": \"\", \"depends_on\": [2], \"affects_table\": null, \"operation\": \"OTHER\"}, {\"step\": 4, \"description\": \"Drop the original assignments table\", \"sql\": \"DROP TABLE assignments;\", \"depends_on\": [3], \"affects_table\": \"assignments\", \"operation\": \"DROP_TABLE\"}, {\"step\": 5, \"description\": \"Rename assignments_new to assignments\", \"sql\": \"ALTER TABLE assignments_new RENAME TO assignments;\", \"depends_on\": [4], \"affects_table\": \"assignments\", \"operation\": \"ALTER_TABLE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Rename current assignments (INTEGER hours) back to assignments_new to free the name\", \"sql\": \"ALTER TABLE assignments RENAME TO assignments_new;\", \"reverses_forward_step\": 5}, {\"step\": 2, \"description\": \"Recreate the original assignments table with hours as REAL\", \"sql\": \"CREATE TABLE assignments (employee_id REAL NOT NULL, project_id REAL NOT NULL, role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id), FOREIGN KEY (employee_id) REFERENCES employees(id), FOREIGN KEY (project_id) REFERENCES projects(id));\", \"reverses_forward_step\": 4}, {\"step\": 3, \"description\": \"Copy rows back from assignments_new into the restored assignments table, casting INTEGER hours back to REAL\", \"sql\": \"INSERT INTO assignments (employee_id, project_id, role, hours) SELECT employee_id, project_id, role, CAST(hours AS REAL) FROM assignments_new;\", \"reverses_forward_step\": 2}, {\"step\": 4, \"description\": \"Drop the temporary assignments_new table used during rollback\", \"sql\": \"DROP TABLE assignments_new;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT CASE WHEN (SELECT COUNT(*) FROM assignments) = (SELECT COUNT(*) FROM assignments) AND (SELECT COUNT(*) FROM pragma_table_info('assignments') WHERE name = 'hours' AND type = 'REAL') = 1 AND (SELECT COUNT(*) FROM assignments WHERE hours != CAST(hours AS REAL)) = 0 THEN 'MIGRATION OK' ELSE 'MIGRATION FAILED' END AS result;\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "wrong_column_ref",
+      "mirror_verdict": false,
+      "mirror_reasoning": "The migration plan has critical errors in both the DDL and DML: the new table is created with 'hours REAL' rather than 'hours INTEGER', and the INSERT uses CAST(hours AS REAL) instead of CAST(hours AS INTEGER), meaning the column type change and truncation requirement are never actually implemented. Additional issues include wrong column types for the primary key columns and a broken validation query that cannot detect failures. Issues: Forward step 1 creates assignments_new with 'hours REAL' instead of 'hours INTEGER', defeating the entire purpose of the migration.; Forward step 2 uses CAST(hours AS REAL) instead of CAST(hours AS INTEGER), so fractional values are never truncated.; Forward step 1 declares employee_id and project_id as REAL instead of INTEGER, mismatching the source schema's INTEGER FK columns.; Rollback step 2 also recreates assignments with employee_id and project_id as REAL instead of INTEGER.; The validation SQL checks for type = 'REAL' instead of type = 'INTEGER', so a successful migration would be reported as FAILED and vice versa.; The validation SQL's row-count check compares assignments to itself (SELECT COUNT(*) FROM assignments twice), so it always returns equal and never actually validates against the pre-migration count.; Step 3 has an empty SQL string with no verification logic, providing no actual safety check before the destructive DROP",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": true,
+            "has_cycle": false,
+            "sequential_violation": false,
+            "topological_order": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "4/5",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 9,
+            "errors": [
+              {
+                "sql": "CREATE TABLE assignments_new (employee_id REAL NOT NULL, project_id REAL NOT NULL, role TEXT, hours ",
+                "error": "table assignments_new already exists"
+              }
+            ],
+            "reason": "1 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "D"
+        ],
+        "sql_extracted": 9,
+        "reason": "failed checks: ['D']"
+      }
+    },
+    {
+      "id": "B-me12",
+      "question": "Delete cancelled projects and clean up orphan assignments",
+      "output": "{\"scenario_id\": \"s11\", \"title\": \"Delete cancelled projects and clean up orphan assignments\", \"affected_tables\": [\"assignments\", \"projects\"], \"affected_columns\": {\"assignments\": [\"employee_id\", \"project_id\", \"role\", \"hours\"], \"projects\": [\"id\", \"name\", \"dept_id\", \"start_date\", \"status\"]}, \"forward_steps\": [{\"step\": 2, \"description\": \"Create a backup table for orphan assignments referencing cancelled projects before deletion\", \"sql\": \"CREATE TABLE IF NOT EXISTS _backup_cancelled_assignments AS SELECT a.* FROM assignments a INNER JOIN projects p ON a.project_id = p.id WHERE p.status = 'cancelled';\", \"depends_on\": [2], \"affects_table\": \"_backup_cancelled_assignments\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 1, \"description\": \"Create a backup table for cancelled projects before deletion\", \"sql\": \"CREATE TABLE IF NOT EXISTS _backup_cancelled_projects AS SELECT * FROM projects WHERE status = 'cancelled';\", \"depends_on\": [], \"affects_table\": \"_backup_cancelled_projects\", \"operation\": \"CREATE_TABLE\"}, {\"step\": 3, \"description\": \"Delete all assignments that reference cancelled projects (FK order: child before parent)\", \"sql\": \"DELETE FROM assignments WHERE project_id IN (SELECT id FROM projects WHERE status = 'cancelled');\", \"depends_on\": [2], \"affects_table\": \"assignments\", \"operation\": \"DELETE\"}, {\"step\": 4, \"description\": \"Delete all projects with status='cancelled'\", \"sql\": \"DELETE FROM projects WHERE status = 'cancelled';\", \"depends_on\": [3], \"affects_table\": \"projects\", \"operation\": \"DELETE\"}], \"rollback_steps\": [{\"step\": 1, \"description\": \"Restore cancelled projects from backup table\", \"sql\": \"INSERT OR IGNORE INTO projects SELECT * FROM _backup_cancelled_projects;\", \"reverses_forward_step\": 4}, {\"step\": 2, \"description\": \"Restore orphan assignments from backup table\", \"sql\": \"INSERT OR IGNORE INTO assignments SELECT * FROM _backup_cancelled_assignments;\", \"reverses_forward_step\": 3}, {\"step\": 3, \"description\": \"Drop the assignments backup table\", \"sql\": \"DROP TABLE IF EXISTS _backup_cancelled_assignments;\", \"reverses_forward_step\": 2}, {\"step\": 4, \"description\": \"Drop the projects backup table\", \"sql\": \"DROP TABLE IF EXISTS _backup_cancelled_projects;\", \"reverses_forward_step\": 1}], \"validation_sql\": \"SELECT (SELECT COUNT(*) FROM projects WHERE status = 'cancelled') AS remaining_cancelled_projects, (SELECT COUNT(*) FROM assignments WHERE project_id NOT IN (SELECT id FROM projects)) AS orphan_assignments, (SELECT COUNT(*) FROM _backup_cancelled_projects) AS backed_up_projects, (SELECT COUNT(*) FROM _backup_cancelled_assignments) AS backed_up_assignments;\"}",
+      "ground_truth": false,
+      "is_seeded_error": true,
+      "error_type": "wrong_ordering",
+      "mirror_verdict": false,
+      "mirror_reasoning": "The plan has a critical self-referential dependency error on step 2 (depends_on: [2]), making the dependency graph logically invalid. Beyond that, the forward steps are presented out of sequence in the plan document and the validation query references backup tables that may not exist post-rollback. These issues make the plan incorrect as written. Issues: Step 2 (backup assignments) lists 'depends_on': [2], meaning it depends on itself, which is a circular/invalid dependency. It should depend on step 1 (the projects backup), i.e., 'depends_on': [1].; The forward steps are listed out of order in the JSON (step 2 appears before step 1), and step 2's self-referential dependency makes the dependency graph invalid. The correct order should be: step 1 \u2192 step 2 \u2192 step 3 \u2192 step 4.; SQLite does not enforce foreign key constraints by default, but the plan does not include 'PRAGMA foreign_keys = OFF/ON' guards. While this is not strictly required for correctness in SQLite (since FK enforcement is off by default), it is a best-practice omission that could matter if FK enforcement is enabled.; The rollback steps drop the backup tables (steps 3 and 4) after restoring data, which is acceptable, but there is no check or guard ensuring the restore succeeds before the backup tables are dropped. A failed INSERT would leave the backup tables dropped with no recovery path.; The validation SQL references '_backup_cancelled_projects' and '_backup_cancelled_assignments', which are migration-internal tables. If validation is run after rollback completes (including dropping those tables), the query will fail with a 'no such table' error",
+      "oracle_verdict": false,
+      "oracle_details": {
+        "checks": {
+          "A": {
+            "passed": true,
+            "missing_tables": [],
+            "missing_cols": [],
+            "check": "A-completeness-structured"
+          },
+          "B": {
+            "passed": false,
+            "has_cycle": true,
+            "sequential_violation": false,
+            "topological_order": [
+              1
+            ],
+            "check": "B-ordering-structured"
+          },
+          "C": {
+            "passed": true,
+            "uncovered_forward_steps": [],
+            "rollback_coverage": "4/4",
+            "check": "C-rollback-structured"
+          },
+          "D": {
+            "passed": false,
+            "sql_count": 9,
+            "errors": [
+              {
+                "sql": "INSERT OR IGNORE INTO projects SELECT * FROM _backup_cancelled_projects;",
+                "error": "table projects has 7 columns but 6 values were supplied"
+              },
+              {
+                "sql": "INSERT OR IGNORE INTO assignments SELECT * FROM _backup_cancelled_assignments;",
+                "error": "table assignments has 5 columns but 4 values were supplied"
+              },
+              {
+                "sql": "SELECT (SELECT COUNT(*) FROM projects WHERE status = 'cancelled') AS remaining_cancelled_projects, (",
+                "error": "no such table: _backup_cancelled_projects"
+              }
+            ],
+            "reason": "3 SQL error(s)",
+            "check": "D-sql-execution"
+          }
+        },
+        "failed_checks": [
+          "B",
+          "D"
+        ],
+        "sql_extracted": 9,
+        "reason": "failed checks: ['B', 'D']"
+      }
+    }
+  ]
+}

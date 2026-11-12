@@ -20,8 +20,10 @@ Blind spots:
   D: cannot catch errors that produce syntactically valid but semantically wrong SQL
 """
 import re
+import shutil
 import sqlite3
 import sys
+import tempfile
 import os
 from pathlib import Path
 
@@ -285,8 +287,45 @@ def check_c_rollback_prose(plan_text: str, scenario: dict) -> dict:
 
 # ── Check D — SQL execution ───────────────────────────────────────────────────
 
-def check_d_sql_execution(sql_statements: list[str], db_path: Path) -> dict:
-    """Execute SQL statements in a transaction that is always rolled back."""
+def split_sql_statements(sql: str) -> list[str]:
+    """Split a string that may hold several SQL statements into single statements.
+
+    Uses sqlite3.complete_statement, so semicolons inside string literals,
+    quoted identifiers, comments, and CREATE TRIGGER ... BEGIN ...; END bodies
+    do not cause a split. A trailing fragment without a semicolon is kept as
+    its own statement (sqlite will report it if it is malformed).
+    """
+    statements = []
+    buf = ""
+    for ch in sql:
+        buf += ch
+        if ch == ";" and sqlite3.complete_statement(buf):
+            stmt = buf.strip()
+            if stmt.strip(";").strip():
+                statements.append(stmt)
+            buf = ""
+    tail = buf.strip()
+    if tail and tail.strip(";").strip():
+        statements.append(tail)
+    return statements
+
+
+def check_d_sql_execution(sql_statements: list[str], db_path: Path, legacy: bool = False) -> dict:
+    """Execute a plan's SQL against a fresh, throwaway copy of the database.
+
+    Each call copies `db_path` to a temp file and runs there, so every sample
+    starts from the same pristine schema. (A rolled-back transaction is not
+    enough: Python's sqlite3 autocommits DDL such as ALTER/CREATE/DROP, which
+    previously leaked schema changes from one sample into the next.)
+    Each entry of `sql_statements` may contain several statements; they are
+    split and run one at a time, in order, against the same copy, so multi-step
+    plans see their own earlier steps and every failing statement is reported.
+
+    legacy=True reproduces the original Check D exactly, for replaying old
+    results: it runs each entry unsplit with conn.execute() (so multi-statement
+    entries fail with "You can only execute one statement at a time") directly
+    on `db_path`, then rolls back — which does not undo autocommitted DDL.
+    """
     if not sql_statements:
         return {
             "passed": None,
@@ -294,40 +333,69 @@ def check_d_sql_execution(sql_statements: list[str], db_path: Path) -> dict:
             "check": "D-sql-execution",
         }
 
-    errors = []
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA foreign_keys = ON")
-    try:
-        for stmt in sql_statements:
+    if legacy:
+        statements = list(sql_statements)
+    else:
+        statements = [st for entry in sql_statements for st in split_sql_statements(entry)]
+
+    def _execute_all(conn: sqlite3.Connection) -> list[dict]:
+        errs = []
+        for stmt in statements:
             try:
                 conn.execute(stmt)
             except sqlite3.Error as e:
-                errors.append({"sql": stmt[:100], "error": str(e)})
-    finally:
-        conn.rollback()
-        conn.close()
+                errs.append({"sql": stmt[:100], "error": str(e)})
+        return errs
+
+    if legacy:
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA foreign_keys = ON")
+        try:
+            errors = _execute_all(conn)
+        finally:
+            conn.rollback()
+            conn.close()
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            scratch_db = Path(tmp) / "check_d.db"
+            shutil.copyfile(db_path, scratch_db)
+            conn = sqlite3.connect(str(scratch_db))
+            conn.execute("PRAGMA foreign_keys = ON")
+            try:
+                errors = _execute_all(conn)
+            finally:
+                conn.close()
 
     passed = len(errors) == 0
     return {
         "passed": passed,
-        "sql_count": len(sql_statements),
+        "sql_count": len(statements),
         "errors": errors,
         "reason": "all SQL executed cleanly" if passed else f"{len(errors)} SQL error(s)",
         "check": "D-sql-execution",
+        "mode": "legacy" if legacy else "fresh-copy",
     }
 
 
 # ── Composite verdict ─────────────────────────────────────────────────────────
 
-def evaluate_prose(plan_text: str, scenario: dict, db_path: Path) -> tuple[bool, dict]:
-    """Run all checks on a prose migration plan. Returns (verdict, details)."""
+def evaluate_prose(
+    plan_text: str, scenario: dict, db_path: Path, skip_checks: tuple[str, ...] = (),
+    check_d_legacy: bool = False,
+) -> tuple[bool, dict]:
+    """Run all checks on a prose migration plan. Returns (verdict, details).
+
+    `skip_checks` names checks to leave out entirely, e.g. ("D",).
+    `check_d_legacy` runs the original Check D (see check_d_sql_execution).
+    """
     sql = _extract_sql_blocks(plan_text)
-    checks = {
-        "A": check_a_completeness_prose(plan_text, scenario),
-        "B": check_b_ordering_prose(plan_text),
-        "C": check_c_rollback_prose(plan_text, scenario),
-        "D": check_d_sql_execution(sql, db_path),
+    runners = {
+        "A": lambda: check_a_completeness_prose(plan_text, scenario),
+        "B": lambda: check_b_ordering_prose(plan_text),
+        "C": lambda: check_c_rollback_prose(plan_text, scenario),
+        "D": lambda: check_d_sql_execution(sql, db_path, legacy=check_d_legacy),
     }
+    checks = {k: run() for k, run in runners.items() if k not in skip_checks}
 
     # Verdict: fail if any non-abstain check fails
     failed = [
@@ -339,12 +407,19 @@ def evaluate_prose(plan_text: str, scenario: dict, db_path: Path) -> tuple[bool,
         "checks": checks,
         "failed_checks": failed,
         "sql_extracted": len(sql),
+        "skipped_checks": list(skip_checks),
         "reason": "all checks passed" if passed else f"failed checks: {failed}",
     }
 
 
-def evaluate_structured(plan: dict, scenario: dict, db_path: Path) -> tuple[bool, dict]:
-    """Run all checks on a structured JSON migration plan. Returns (verdict, details)."""
+def evaluate_structured(
+    plan: dict, scenario: dict, db_path: Path, skip_checks: tuple[str, ...] = (),
+    check_d_legacy: bool = False,
+) -> tuple[bool, dict]:
+    """Run all checks on a structured JSON migration plan. Returns (verdict, details).
+
+    `skip_checks` and `check_d_legacy` behave as in evaluate_prose.
+    """
     sql_stmts = []
     for step in plan.get("forward_steps", []):
         sql = step.get("sql", "").strip()
@@ -357,12 +432,13 @@ def evaluate_structured(plan: dict, scenario: dict, db_path: Path) -> tuple[bool
     if plan.get("validation_sql"):
         sql_stmts.append(plan["validation_sql"].rstrip(";") + ";")
 
-    checks = {
-        "A": check_a_completeness_structured(plan, scenario),
-        "B": check_b_ordering_structured(plan),
-        "C": check_c_rollback_structured(plan),
-        "D": check_d_sql_execution(sql_stmts, db_path),
+    runners = {
+        "A": lambda: check_a_completeness_structured(plan, scenario),
+        "B": lambda: check_b_ordering_structured(plan),
+        "C": lambda: check_c_rollback_structured(plan),
+        "D": lambda: check_d_sql_execution(sql_stmts, db_path, legacy=check_d_legacy),
     }
+    checks = {k: run() for k, run in runners.items() if k not in skip_checks}
 
     failed = [
         k for k, v in checks.items()
@@ -373,5 +449,6 @@ def evaluate_structured(plan: dict, scenario: dict, db_path: Path) -> tuple[bool
         "checks": checks,
         "failed_checks": failed,
         "sql_extracted": len(sql_stmts),
+        "skipped_checks": list(skip_checks),
         "reason": "all checks passed" if passed else f"failed checks: {failed}",
     }

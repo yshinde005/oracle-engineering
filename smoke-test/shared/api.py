@@ -3,16 +3,19 @@ import json
 import os
 import time
 
-import anthropic
+# `anthropic` is imported lazily so offline re-scoring (no API calls) works
+# without the package installed.
 
 MODEL = "claude-sonnet-4-6"
 COST_PER_INPUT_TOKEN = 3.0 / 1_000_000
 COST_PER_OUTPUT_TOKEN = 15.0 / 1_000_000
 
-_client: anthropic.Anthropic | None = None
+_client = None  # anthropic.Anthropic, created on first use
 
 
-def get_client() -> anthropic.Anthropic:
+def get_client():
+    import anthropic
+
     global _client
     if _client is None:
         key = os.environ.get("ANTHROPIC_API_KEY")
@@ -27,6 +30,8 @@ def get_client() -> anthropic.Anthropic:
 
 def call_claude(system: str, user: str, max_tokens: int = 2048) -> tuple[str, dict]:
     """Returns (content_text, usage_dict). Retries once on transient errors."""
+    import anthropic
+
     client = get_client()
     for attempt in range(2):
         try:

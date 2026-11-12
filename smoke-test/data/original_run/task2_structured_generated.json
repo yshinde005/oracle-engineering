@@ -1,0 +1,924 @@
+{
+  "s01": {
+    "plan": {
+      "scenario_id": "s01",
+      "title": "Add nullable email column to employees",
+      "affected_tables": [
+        "employees"
+      ],
+      "affected_columns": {
+        "employees": [
+          "email"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Add nullable email column to employees table. Existing rows will automatically receive NULL for this column.",
+          "sql": "ALTER TABLE employees ADD COLUMN email TEXT NULL;",
+          "depends_on": [],
+          "affects_table": "employees",
+          "operation": "ADD_COLUMN"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Remove the email column by recreating the employees table without it, copying all existing data, dropping the old table, and renaming the new one.",
+          "sql": "CREATE TABLE employees_backup (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, hire_date TEXT); INSERT INTO employees_backup SELECT id, name, dept_id, salary, hire_date FROM employees; DROP TABLE employees; ALTER TABLE employees_backup RENAME TO employees;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN email IS NULL THEN 1 ELSE 0 END) AS null_email_rows FROM employees; SELECT name FROM pragma_table_info('employees') WHERE name = 'email';"
+    },
+    "usage": {
+      "input_tokens": 680,
+      "output_tokens": 367
+    }
+  },
+  "s02": {
+    "plan": {
+      "scenario_id": "s02",
+      "title": "Add budget_used column to departments with a default of 0",
+      "affected_tables": [
+        "departments"
+      ],
+      "affected_columns": {
+        "departments": [
+          "budget_used"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Add budget_used column to departments table with a default of 0. SQLite will set existing rows to 0 via the default, satisfying the NOT NULL constraint.",
+          "sql": "ALTER TABLE departments ADD COLUMN budget_used REAL NOT NULL DEFAULT 0;",
+          "depends_on": [],
+          "affects_table": "departments",
+          "operation": "ADD_COLUMN"
+        },
+        {
+          "step": 2,
+          "description": "Backfill any existing rows where budget_used might be NULL to ensure all rows have budget_used = 0. This is a safety step in case the SQLite version did not apply the default to existing rows.",
+          "sql": "UPDATE departments SET budget_used = 0 WHERE budget_used IS NULL;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "departments",
+          "operation": "UPDATE"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Recreate the departments table without the budget_used column, copying all original data back, then drop the modified table and rename. Also re-establish any indexes or foreign key relationships.",
+          "sql": "CREATE TABLE departments_backup AS SELECT id, name, budget FROM departments; DROP TABLE departments; ALTER TABLE departments_backup RENAME TO departments;",
+          "reverses_forward_step": 1
+        },
+        {
+          "step": 2,
+          "description": "No data reversal needed for the backfill UPDATE since the column itself is dropped in rollback step 1. This is a no-op placeholder confirming the UPDATE is fully reversed by the column removal.",
+          "sql": "",
+          "reverses_forward_step": 2
+        }
+      ],
+      "validation_sql": "SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS: all rows have budget_used = 0' ELSE 'FAIL: some rows have budget_used != 0 or NULL' END AS result FROM departments WHERE budget_used IS NULL OR budget_used != 0; SELECT COUNT(*) AS total_rows, SUM(CASE WHEN budget_used = 0 THEN 1 ELSE 0 END) AS rows_with_zero FROM departments;"
+    },
+    "usage": {
+      "input_tokens": 697,
+      "output_tokens": 620
+    }
+  },
+  "s03": {
+    "plan": {
+      "scenario_id": "s03",
+      "title": "Add end_date column to projects",
+      "affected_tables": [
+        "projects"
+      ],
+      "affected_columns": {
+        "projects": [
+          "end_date"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Add nullable end_date column to projects table",
+          "sql": "ALTER TABLE projects ADD COLUMN end_date TEXT NULL;",
+          "depends_on": [],
+          "affects_table": "projects",
+          "operation": "ADD_COLUMN"
+        },
+        {
+          "step": 2,
+          "description": "Backfill end_date for completed projects using start_date as a placeholder (sets end_date to start_date where no real end date is known)",
+          "sql": "UPDATE projects SET end_date = start_date WHERE status = 'completed' AND end_date IS NULL;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "projects",
+          "operation": "UPDATE"
+        },
+        {
+          "step": 3,
+          "description": "Backfill end_date for cancelled projects using start_date as a placeholder (sets end_date to start_date where no real end date is known)",
+          "sql": "UPDATE projects SET end_date = start_date WHERE status = 'cancelled' AND end_date IS NULL;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "projects",
+          "operation": "UPDATE"
+        },
+        {
+          "step": 4,
+          "description": "Verify active projects have NULL end_date (no SQL change, audit only \u2014 sets active project end_dates to NULL in case any were inadvertently set)",
+          "sql": "UPDATE projects SET end_date = NULL WHERE status = 'active';",
+          "depends_on": [
+            2,
+            3
+          ],
+          "affects_table": "projects",
+          "operation": "UPDATE"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Clear end_date values backfilled for active projects (reverse step 4 \u2014 restore any overwritten values; since active rows were set to NULL this is a no-op in practice)",
+          "sql": "UPDATE projects SET end_date = NULL WHERE status = 'active';",
+          "reverses_forward_step": 4
+        },
+        {
+          "step": 2,
+          "description": "Clear end_date backfill for cancelled projects",
+          "sql": "UPDATE projects SET end_date = NULL WHERE status = 'cancelled';",
+          "reverses_forward_step": 3
+        },
+        {
+          "step": 3,
+          "description": "Clear end_date backfill for completed projects",
+          "sql": "UPDATE projects SET end_date = NULL WHERE status = 'completed';",
+          "reverses_forward_step": 2
+        },
+        {
+          "step": 4,
+          "description": "Remove end_date column by recreating projects table without it",
+          "sql": "CREATE TABLE projects_backup AS SELECT id, name, dept_id, start_date, status FROM projects; DROP TABLE projects; ALTER TABLE projects_backup RENAME TO projects;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT (SELECT COUNT(*) FROM projects WHERE status = 'active' AND end_date IS NOT NULL) AS active_with_end_date_count, (SELECT COUNT(*) FROM projects WHERE status = 'completed' AND end_date IS NULL) AS completed_missing_end_date_count, (SELECT COUNT(*) FROM projects WHERE status = 'cancelled' AND end_date IS NULL) AS cancelled_missing_end_date_count, (SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name = 'end_date') AS column_exists;"
+    },
+    "usage": {
+      "input_tokens": 688,
+      "output_tokens": 938
+    }
+  },
+  "s04": {
+    "plan": {
+      "scenario_id": "s04",
+      "title": "Rename hire_date to start_date in employees table",
+      "affected_tables": [
+        "employees"
+      ],
+      "affected_columns": {
+        "employees": [
+          "hire_date",
+          "start_date"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Create new employees table with start_date instead of hire_date, preserving all other columns, constraints, and foreign keys",
+          "sql": "CREATE TABLE employees_new (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, start_date TEXT);",
+          "depends_on": [],
+          "affects_table": "employees",
+          "operation": "CREATE_TABLE"
+        },
+        {
+          "step": 2,
+          "description": "Copy all data from employees into employees_new, mapping hire_date to start_date",
+          "sql": "INSERT INTO employees_new (id, name, dept_id, salary, start_date) SELECT id, name, dept_id, salary, hire_date FROM employees;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "employees",
+          "operation": "INSERT"
+        },
+        {
+          "step": 3,
+          "description": "Drop the old employees table",
+          "sql": "DROP TABLE employees;",
+          "depends_on": [
+            2
+          ],
+          "affects_table": "employees",
+          "operation": "DROP_TABLE"
+        },
+        {
+          "step": 4,
+          "description": "Rename employees_new to employees, completing the column rename",
+          "sql": "ALTER TABLE employees_new RENAME TO employees;",
+          "depends_on": [
+            3
+          ],
+          "affects_table": "employees",
+          "operation": "ALTER_TABLE"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Recreate the original employees table with hire_date column",
+          "sql": "CREATE TABLE employees_rollback (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, hire_date TEXT);",
+          "reverses_forward_step": 4
+        },
+        {
+          "step": 2,
+          "description": "Copy data back from renamed employees table into rollback table, mapping start_date back to hire_date",
+          "sql": "INSERT INTO employees_rollback (id, name, dept_id, salary, hire_date) SELECT id, name, dept_id, salary, start_date FROM employees;",
+          "reverses_forward_step": 3
+        },
+        {
+          "step": 3,
+          "description": "Drop the migrated employees table",
+          "sql": "DROP TABLE employees;",
+          "reverses_forward_step": 2
+        },
+        {
+          "step": 4,
+          "description": "Rename rollback table to employees, restoring original schema",
+          "sql": "ALTER TABLE employees_rollback RENAME TO employees;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END AS column_exists_check FROM pragma_table_info('employees') WHERE name = 'start_date' UNION ALL SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END AS old_column_absent FROM pragma_table_info('employees') WHERE name = 'hire_date' UNION ALL SELECT CASE WHEN (SELECT COUNT(*) FROM employees) = (SELECT COUNT(*) FROM employees WHERE start_date IS NOT NULL OR start_date IS NULL) THEN 'PASS' ELSE 'FAIL' END AS row_count_check UNION ALL SELECT CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END AS projects_start_date_unaffected FROM pragma_table_info('projects') WHERE name = 'start_date';"
+    },
+    "usage": {
+      "input_tokens": 707,
+      "output_tokens": 996
+    }
+  },
+  "s05": {
+    "plan": {
+      "scenario_id": "s05",
+      "title": "Add unique department_code column to departments",
+      "affected_tables": [
+        "departments"
+      ],
+      "affected_columns": {
+        "departments": [
+          "department_code"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Add department_code column as nullable TEXT (no constraints yet) to allow backfill",
+          "sql": "ALTER TABLE departments ADD COLUMN department_code TEXT;",
+          "depends_on": [],
+          "affects_table": "departments",
+          "operation": "ADD_COLUMN"
+        },
+        {
+          "step": 2,
+          "description": "Backfill department_code for all 5 existing departments using unique codes based on their id",
+          "sql": "UPDATE departments SET department_code = CASE id WHEN 1 THEN 'ENG' WHEN 2 THEN 'SALES' WHEN 3 THEN 'MKT' WHEN 4 THEN 'HR' WHEN 5 THEN 'RES' ELSE 'DEPT' || CAST(id AS TEXT) END;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "departments",
+          "operation": "UPDATE"
+        },
+        {
+          "step": 3,
+          "description": "Verify all departments have a non-null department_code before applying constraints (guard check via assertion pattern)",
+          "sql": "SELECT CASE WHEN COUNT(*) = 0 THEN 'OK' ELSE 'FAIL' END AS check_result FROM departments WHERE department_code IS NULL;",
+          "depends_on": [
+            2
+          ],
+          "affects_table": "departments",
+          "operation": "OTHER"
+        },
+        {
+          "step": 4,
+          "description": "Recreate departments table with department_code TEXT NOT NULL UNIQUE constraint (SQLite requires table rebuild for constraints)",
+          "sql": "CREATE TABLE departments_new (id INTEGER PRIMARY KEY, name TEXT, budget REAL, department_code TEXT NOT NULL UNIQUE);",
+          "depends_on": [
+            3
+          ],
+          "affects_table": "departments",
+          "operation": "CREATE_TABLE"
+        },
+        {
+          "step": 5,
+          "description": "Copy all data from old departments table into new table",
+          "sql": "INSERT INTO departments_new (id, name, budget, department_code) SELECT id, name, budget, department_code FROM departments;",
+          "depends_on": [
+            4
+          ],
+          "affects_table": "departments",
+          "operation": "INSERT"
+        },
+        {
+          "step": 6,
+          "description": "Drop the old departments table",
+          "sql": "DROP TABLE departments;",
+          "depends_on": [
+            5
+          ],
+          "affects_table": "departments",
+          "operation": "DROP_TABLE"
+        },
+        {
+          "step": 7,
+          "description": "Rename departments_new to departments",
+          "sql": "ALTER TABLE departments_new RENAME TO departments;",
+          "depends_on": [
+            6
+          ],
+          "affects_table": "departments",
+          "operation": "ALTER_TABLE"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Recreate the original departments table without department_code",
+          "sql": "CREATE TABLE departments_rollback (id INTEGER PRIMARY KEY, name TEXT, budget REAL);",
+          "reverses_forward_step": 7
+        },
+        {
+          "step": 2,
+          "description": "Copy data back excluding department_code column",
+          "sql": "INSERT INTO departments_rollback (id, name, budget) SELECT id, name, budget FROM departments;",
+          "reverses_forward_step": 6
+        },
+        {
+          "step": 3,
+          "description": "Drop the migrated departments table",
+          "sql": "DROP TABLE departments;",
+          "reverses_forward_step": 5
+        },
+        {
+          "step": 4,
+          "description": "Rename rollback table back to departments",
+          "sql": "ALTER TABLE departments_rollback RENAME TO departments;",
+          "reverses_forward_step": 4
+        },
+        {
+          "step": 5,
+          "description": "No action needed \u2014 table rebuild in step 4 forward already removed the nullable column; data is restored to original shape",
+          "sql": "",
+          "reverses_forward_step": 3
+        },
+        {
+          "step": 6,
+          "description": "No action needed \u2014 backfill update is undone by the table recreation above",
+          "sql": "",
+          "reverses_forward_step": 2
+        },
+        {
+          "step": 7,
+          "description": "No action needed \u2014 nullable column addition is undone by the table recreation above",
+          "sql": "",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT CASE WHEN (SELECT COUNT(*) FROM departments WHERE department_code IS NULL) = 0 AND (SELECT COUNT(*) FROM departments) = (SELECT COUNT(DISTINCT department_code) FROM departments) THEN 'MIGRATION OK' ELSE 'MIGRATION FAILED' END AS result;"
+    },
+    "usage": {
+      "input_tokens": 730,
+      "output_tokens": 1288
+    }
+  },
+  "s06": {
+    "plan": {
+      "scenario_id": "s06",
+      "title": "Add manager_id self-reference to employees",
+      "affected_tables": [
+        "employees"
+      ],
+      "affected_columns": {
+        "employees": [
+          "manager_id"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Add nullable manager_id column to employees table as a self-referential foreign key. SQLite allows adding a column with a FK reference to the same table; NULL values indicate top-level employees with no manager.",
+          "sql": "ALTER TABLE employees ADD COLUMN manager_id INTEGER NULL REFERENCES employees(id);",
+          "depends_on": [],
+          "affects_table": "employees",
+          "operation": "ADD_COLUMN"
+        },
+        {
+          "step": 2,
+          "description": "Verify all non-NULL manager_id values reference valid employee ids (data integrity check). This UPDATE is a no-op placeholder ensuring any stale/invalid references are nullified before relying on the constraint.",
+          "sql": "UPDATE employees SET manager_id = NULL WHERE manager_id IS NOT NULL AND manager_id NOT IN (SELECT id FROM employees);",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "employees",
+          "operation": "UPDATE"
+        },
+        {
+          "step": 3,
+          "description": "Create an index on employees.manager_id to support efficient hierarchical queries (e.g. finding all direct reports).",
+          "sql": "CREATE INDEX IF NOT EXISTS idx_employees_manager_id ON employees(manager_id);",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "employees",
+          "operation": "OTHER"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Drop the index on manager_id before removing the column.",
+          "sql": "DROP INDEX IF EXISTS idx_employees_manager_id;",
+          "reverses_forward_step": 3
+        },
+        {
+          "step": 2,
+          "description": "Reverse the data integrity nullification step \u2014 no data to restore since it was only nullifying orphaned references.",
+          "sql": "",
+          "reverses_forward_step": 2
+        },
+        {
+          "step": 3,
+          "description": "Recreate the employees table without the manager_id column. SQLite does not support DROP COLUMN in older versions, so we use the standard table-rebuild approach: create new table, copy data, drop old, rename.",
+          "sql": "CREATE TABLE employees_backup AS SELECT id, name, dept_id, salary, hire_date FROM employees; DROP TABLE employees; CREATE TABLE employees ( id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), salary REAL, hire_date TEXT ); INSERT INTO employees (id, name, dept_id, salary, hire_date) SELECT id, name, dept_id, salary, hire_date FROM employees_backup; DROP TABLE employees_backup;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT CASE WHEN COUNT(*) = 0 THEN 'PASS: All manager_id values are valid (NULL or reference existing employee)' ELSE 'FAIL: Orphaned manager_id references detected' END AS result FROM employees WHERE manager_id IS NOT NULL AND manager_id NOT IN (SELECT id FROM employees); SELECT CASE WHEN COUNT(*) >= 0 THEN 'PASS: manager_id column exists on employees' ELSE 'FAIL' END AS column_check FROM pragma_table_info('employees') WHERE name = 'manager_id';"
+    },
+    "usage": {
+      "input_tokens": 707,
+      "output_tokens": 877
+    }
+  },
+  "s07": {
+    "plan": null,
+    "usage": {}
+  },
+  "s08": {
+    "plan": {
+      "scenario_id": "s08",
+      "title": "Change assignments.hours from REAL to INTEGER (truncating decimals)",
+      "affected_tables": [
+        "assignments"
+      ],
+      "affected_columns": {
+        "assignments": [
+          "hours"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Create a new assignments table with hours defined as INTEGER",
+          "sql": "CREATE TABLE assignments_new (employee_id INTEGER NOT NULL, project_id INTEGER NOT NULL, role TEXT, hours INTEGER, PRIMARY KEY (employee_id, project_id), FOREIGN KEY (employee_id) REFERENCES employees(id), FOREIGN KEY (project_id) REFERENCES projects(id));",
+          "depends_on": [],
+          "affects_table": "assignments_new",
+          "operation": "CREATE_TABLE"
+        },
+        {
+          "step": 2,
+          "description": "Copy all rows from assignments into assignments_new, truncating hours to INTEGER using CAST",
+          "sql": "INSERT INTO assignments_new (employee_id, project_id, role, hours) SELECT employee_id, project_id, role, CAST(hours AS INTEGER) FROM assignments;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "assignments_new",
+          "operation": "INSERT"
+        },
+        {
+          "step": 3,
+          "description": "Verify no rows were lost before dropping the old table",
+          "sql": "",
+          "depends_on": [
+            2
+          ],
+          "affects_table": null,
+          "operation": "OTHER"
+        },
+        {
+          "step": 4,
+          "description": "Drop the original assignments table",
+          "sql": "DROP TABLE assignments;",
+          "depends_on": [
+            3
+          ],
+          "affects_table": "assignments",
+          "operation": "DROP_TABLE"
+        },
+        {
+          "step": 5,
+          "description": "Rename assignments_new to assignments",
+          "sql": "ALTER TABLE assignments_new RENAME TO assignments;",
+          "depends_on": [
+            4
+          ],
+          "affects_table": "assignments",
+          "operation": "ALTER_TABLE"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Rename current assignments (INTEGER hours) back to assignments_new to free the name",
+          "sql": "ALTER TABLE assignments RENAME TO assignments_new;",
+          "reverses_forward_step": 5
+        },
+        {
+          "step": 2,
+          "description": "Recreate the original assignments table with hours as REAL",
+          "sql": "CREATE TABLE assignments (employee_id INTEGER NOT NULL, project_id INTEGER NOT NULL, role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id), FOREIGN KEY (employee_id) REFERENCES employees(id), FOREIGN KEY (project_id) REFERENCES projects(id));",
+          "reverses_forward_step": 4
+        },
+        {
+          "step": 3,
+          "description": "Copy rows back from assignments_new into the restored assignments table, casting INTEGER hours back to REAL",
+          "sql": "INSERT INTO assignments (employee_id, project_id, role, hours) SELECT employee_id, project_id, role, CAST(hours AS REAL) FROM assignments_new;",
+          "reverses_forward_step": 2
+        },
+        {
+          "step": 4,
+          "description": "Drop the temporary assignments_new table used during rollback",
+          "sql": "DROP TABLE assignments_new;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT CASE WHEN (SELECT COUNT(*) FROM assignments) = (SELECT COUNT(*) FROM assignments) AND (SELECT COUNT(*) FROM pragma_table_info('assignments') WHERE name = 'hours' AND type = 'INTEGER') = 1 AND (SELECT COUNT(*) FROM assignments WHERE hours != CAST(hours AS INTEGER)) = 0 THEN 'MIGRATION OK' ELSE 'MIGRATION FAILED' END AS result;"
+    },
+    "usage": {
+      "input_tokens": 703,
+      "output_tokens": 986
+    }
+  },
+  "s09": {
+    "plan": {
+      "scenario_id": "s09",
+      "title": "Normalize role in assignments into a lookup table",
+      "affected_tables": [
+        "assignments",
+        "roles"
+      ],
+      "affected_columns": {
+        "assignments": [
+          "role",
+          "role_id"
+        ],
+        "roles": [
+          "id",
+          "name"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Create the roles lookup table with id and unique name columns",
+          "sql": "CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);",
+          "depends_on": [],
+          "affects_table": "roles",
+          "operation": "CREATE_TABLE"
+        },
+        {
+          "step": 2,
+          "description": "Populate roles table with all distinct role values from assignments",
+          "sql": "INSERT INTO roles (name) SELECT DISTINCT role FROM assignments WHERE role IS NOT NULL;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "roles",
+          "operation": "INSERT"
+        },
+        {
+          "step": 3,
+          "description": "Add role_id column to assignments table as a nullable integer (FK to roles will be enforced logically)",
+          "sql": "ALTER TABLE assignments ADD COLUMN role_id INTEGER REFERENCES roles(id);",
+          "depends_on": [
+            2
+          ],
+          "affects_table": "assignments",
+          "operation": "ADD_COLUMN"
+        },
+        {
+          "step": 4,
+          "description": "Backfill role_id in assignments by joining on matching role name in roles",
+          "sql": "UPDATE assignments SET role_id = (SELECT id FROM roles WHERE roles.name = assignments.role);",
+          "depends_on": [
+            3
+          ],
+          "affects_table": "assignments",
+          "operation": "UPDATE"
+        },
+        {
+          "step": 5,
+          "description": "Recreate assignments table without the role TEXT column, keeping role_id FK, to effectively drop the role column (SQLite does not support DROP COLUMN in older versions; use table rebuild)",
+          "sql": "CREATE TABLE assignments_new (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role_id INTEGER REFERENCES roles(id), hours REAL, PRIMARY KEY (employee_id, project_id));",
+          "depends_on": [
+            4
+          ],
+          "affects_table": "assignments",
+          "operation": "CREATE_TABLE"
+        },
+        {
+          "step": 6,
+          "description": "Copy all data from assignments into assignments_new",
+          "sql": "INSERT INTO assignments_new (employee_id, project_id, role_id, hours) SELECT employee_id, project_id, role_id, hours FROM assignments;",
+          "depends_on": [
+            5
+          ],
+          "affects_table": "assignments",
+          "operation": "INSERT"
+        },
+        {
+          "step": 7,
+          "description": "Drop the old assignments table",
+          "sql": "DROP TABLE assignments;",
+          "depends_on": [
+            6
+          ],
+          "affects_table": "assignments",
+          "operation": "DROP_TABLE"
+        },
+        {
+          "step": 8,
+          "description": "Rename assignments_new to assignments",
+          "sql": "ALTER TABLE assignments_new RENAME TO assignments;",
+          "depends_on": [
+            7
+          ],
+          "affects_table": "assignments",
+          "operation": "ALTER_TABLE"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Recreate the original assignments table with role TEXT column instead of role_id",
+          "sql": "CREATE TABLE assignments_old (employee_id INTEGER NOT NULL REFERENCES employees(id), project_id INTEGER NOT NULL REFERENCES projects(id), role TEXT, hours REAL, PRIMARY KEY (employee_id, project_id));",
+          "reverses_forward_step": 8
+        },
+        {
+          "step": 2,
+          "description": "Copy data back from assignments to assignments_old, restoring role TEXT by joining with roles",
+          "sql": "INSERT INTO assignments_old (employee_id, project_id, role, hours) SELECT a.employee_id, a.project_id, r.name, a.hours FROM assignments a LEFT JOIN roles r ON a.role_id = r.id;",
+          "reverses_forward_step": 7
+        },
+        {
+          "step": 3,
+          "description": "Drop the current assignments table (with role_id)",
+          "sql": "DROP TABLE assignments;",
+          "reverses_forward_step": 6
+        },
+        {
+          "step": 4,
+          "description": "Rename assignments_old back to assignments",
+          "sql": "ALTER TABLE assignments_old RENAME TO assignments;",
+          "reverses_forward_step": 5
+        },
+        {
+          "step": 5,
+          "description": "Drop the roles lookup table",
+          "sql": "DROP TABLE roles;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT CASE WHEN (SELECT COUNT(*) FROM assignments WHERE role_id IS NULL) = 0 AND (SELECT COUNT(*) FROM roles) = (SELECT COUNT(DISTINCT r.name) FROM roles r) AND (SELECT COUNT(*) FROM assignments a LEFT JOIN roles r ON a.role_id = r.id WHERE r.id IS NULL) = 0 AND NOT EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role') AND EXISTS (SELECT 1 FROM pragma_table_info('assignments') WHERE name = 'role_id') THEN 'MIGRATION_OK' ELSE 'MIGRATION_FAILED' END AS result;"
+    },
+    "usage": {
+      "input_tokens": 752,
+      "output_tokens": 1399
+    }
+  },
+  "s10": {
+    "plan": {
+      "scenario_id": "s10",
+      "title": "Create salary_history table and backfill from current employee salaries",
+      "affected_tables": [
+        "salary_history"
+      ],
+      "affected_columns": {
+        "salary_history": [
+          "id",
+          "employee_id",
+          "salary",
+          "effective_date",
+          "recorded_at"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Create the salary_history table with autoincrement primary key, foreign key to employees, salary, effective_date, and recorded_at columns",
+          "sql": "CREATE TABLE salary_history (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER NOT NULL REFERENCES employees(id), salary REAL NOT NULL, effective_date TEXT NOT NULL, recorded_at TEXT NOT NULL);",
+          "depends_on": [],
+          "affects_table": "salary_history",
+          "operation": "CREATE_TABLE"
+        },
+        {
+          "step": 2,
+          "description": "Backfill salary_history with each employee's current salary, using hire_date as effective_date and the current timestamp as recorded_at",
+          "sql": "INSERT INTO salary_history (employee_id, salary, effective_date, recorded_at) SELECT id, salary, hire_date, datetime('now') FROM employees;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "salary_history",
+          "operation": "INSERT"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Remove all backfilled rows from salary_history (reverses the INSERT...SELECT backfill)",
+          "sql": "DELETE FROM salary_history;",
+          "reverses_forward_step": 2
+        },
+        {
+          "step": 2,
+          "description": "Drop the salary_history table entirely (reverses table creation)",
+          "sql": "DROP TABLE IF EXISTS salary_history;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT (SELECT COUNT(*) FROM salary_history) = (SELECT COUNT(*) FROM employees) AS row_counts_match, (SELECT COUNT(*) FROM salary_history WHERE employee_id NOT IN (SELECT id FROM employees)) = 0 AS no_orphan_records, (SELECT COUNT(*) FROM salary_history sh JOIN employees e ON sh.employee_id = e.id WHERE sh.salary != e.salary OR sh.effective_date != e.hire_date) = 0 AS salary_and_date_match, (SELECT COUNT(*) FROM salary_history WHERE recorded_at IS NULL OR recorded_at = '') = 0 AS recorded_at_populated;"
+    },
+    "usage": {
+      "input_tokens": 762,
+      "output_tokens": 653
+    }
+  },
+  "s11": {
+    "plan": {
+      "scenario_id": "s11",
+      "title": "Delete cancelled projects and clean up orphan assignments",
+      "affected_tables": [
+        "assignments",
+        "projects"
+      ],
+      "affected_columns": {
+        "assignments": [
+          "employee_id",
+          "project_id",
+          "role",
+          "hours"
+        ],
+        "projects": [
+          "id",
+          "name",
+          "dept_id",
+          "start_date",
+          "status"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Create a backup table for cancelled projects before deletion",
+          "sql": "CREATE TABLE IF NOT EXISTS _backup_cancelled_projects AS SELECT * FROM projects WHERE status = 'cancelled';",
+          "depends_on": [],
+          "affects_table": "_backup_cancelled_projects",
+          "operation": "CREATE_TABLE"
+        },
+        {
+          "step": 2,
+          "description": "Create a backup table for orphan assignments referencing cancelled projects before deletion",
+          "sql": "CREATE TABLE IF NOT EXISTS _backup_cancelled_assignments AS SELECT a.* FROM assignments a INNER JOIN projects p ON a.project_id = p.id WHERE p.status = 'cancelled';",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "_backup_cancelled_assignments",
+          "operation": "CREATE_TABLE"
+        },
+        {
+          "step": 3,
+          "description": "Delete all assignments that reference cancelled projects (FK order: child before parent)",
+          "sql": "DELETE FROM assignments WHERE project_id IN (SELECT id FROM projects WHERE status = 'cancelled');",
+          "depends_on": [
+            2
+          ],
+          "affects_table": "assignments",
+          "operation": "DELETE"
+        },
+        {
+          "step": 4,
+          "description": "Delete all projects with status='cancelled'",
+          "sql": "DELETE FROM projects WHERE status = 'cancelled';",
+          "depends_on": [
+            3
+          ],
+          "affects_table": "projects",
+          "operation": "DELETE"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Restore cancelled projects from backup table",
+          "sql": "INSERT OR IGNORE INTO projects SELECT * FROM _backup_cancelled_projects;",
+          "reverses_forward_step": 4
+        },
+        {
+          "step": 2,
+          "description": "Restore orphan assignments from backup table",
+          "sql": "INSERT OR IGNORE INTO assignments SELECT * FROM _backup_cancelled_assignments;",
+          "reverses_forward_step": 3
+        },
+        {
+          "step": 3,
+          "description": "Drop the assignments backup table",
+          "sql": "DROP TABLE IF EXISTS _backup_cancelled_assignments;",
+          "reverses_forward_step": 2
+        },
+        {
+          "step": 4,
+          "description": "Drop the projects backup table",
+          "sql": "DROP TABLE IF EXISTS _backup_cancelled_projects;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT (SELECT COUNT(*) FROM projects WHERE status = 'cancelled') AS remaining_cancelled_projects, (SELECT COUNT(*) FROM assignments WHERE project_id NOT IN (SELECT id FROM projects)) AS orphan_assignments, (SELECT COUNT(*) FROM _backup_cancelled_projects) AS backed_up_projects, (SELECT COUNT(*) FROM _backup_cancelled_assignments) AS backed_up_assignments;"
+    },
+    "usage": {
+      "input_tokens": 709,
+      "output_tokens": 834
+    }
+  },
+  "s12": {
+    "plan": {
+      "scenario_id": "s12",
+      "title": "Add priority column to projects with CHECK constraint",
+      "affected_tables": [
+        "projects"
+      ],
+      "affected_columns": {
+        "projects": [
+          "priority"
+        ]
+      },
+      "forward_steps": [
+        {
+          "step": 1,
+          "description": "Add priority column to projects table with NOT NULL, DEFAULT 3, and CHECK constraint (priority BETWEEN 1 AND 5). SQLite will populate all existing rows with the default value of 3.",
+          "sql": "ALTER TABLE projects ADD COLUMN priority INTEGER NOT NULL DEFAULT 3 CHECK(priority BETWEEN 1 AND 5);",
+          "depends_on": [],
+          "affects_table": "projects",
+          "operation": "ADD_COLUMN"
+        },
+        {
+          "step": 2,
+          "description": "Verify all existing rows have priority = 3 (the default). This is a data integrity check step with no schema change.",
+          "sql": "UPDATE projects SET priority = 3 WHERE priority IS NULL;",
+          "depends_on": [
+            1
+          ],
+          "affects_table": "projects",
+          "operation": "UPDATE"
+        },
+        {
+          "step": 3,
+          "description": "Confirm no rows violate the CHECK constraint (priority BETWEEN 1 AND 5). Raises an error implicitly if any out-of-range value exists by attempting a no-op update that would trigger the constraint check.",
+          "sql": "SELECT COUNT(*) AS invalid_priority_count FROM projects WHERE priority < 1 OR priority > 5 OR priority IS NULL;",
+          "depends_on": [
+            2
+          ],
+          "affects_table": "projects",
+          "operation": "OTHER"
+        }
+      ],
+      "rollback_steps": [
+        {
+          "step": 1,
+          "description": "Rollback step 3: No schema change was made; nothing to undo for the validation query.",
+          "sql": "",
+          "reverses_forward_step": 3
+        },
+        {
+          "step": 2,
+          "description": "Rollback step 2: No data was structurally changed beyond what the column addition did; the UPDATE of NULLs is moot once the column is dropped.",
+          "sql": "",
+          "reverses_forward_step": 2
+        },
+        {
+          "step": 3,
+          "description": "Rollback step 1: SQLite does not support DROP COLUMN directly in older versions, so recreate projects table without the priority column, copy data, drop old table, and rename. Uses a transaction for safety.",
+          "sql": "BEGIN TRANSACTION; CREATE TABLE projects_backup (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER REFERENCES departments(id), start_date TEXT, status TEXT CHECK(status IN ('active','completed','cancelled'))); INSERT INTO projects_backup (id, name, dept_id, start_date, status) SELECT id, name, dept_id, start_date, status FROM projects; DROP TABLE projects; ALTER TABLE projects_backup RENAME TO projects; COMMIT;",
+          "reverses_forward_step": 1
+        }
+      ],
+      "validation_sql": "SELECT CASE WHEN COUNT(*) = 0 THEN 'MIGRATION OK: all projects have valid priority' ELSE 'MIGRATION FAILED: some projects have invalid or missing priority' END AS result FROM projects WHERE priority IS NULL OR priority < 1 OR priority > 5;"
+    },
+    "usage": {
+      "input_tokens": 732,
+      "output_tokens": 826
+    }
+  }
+}
